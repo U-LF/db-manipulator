@@ -213,6 +213,21 @@ const server = http.createServer(async (req, res) => {
                     .badge-approved { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
                     .badge-rejected { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
                     
+                    /* Dashboard Stats Grid */
+                    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 24px; animation: fadeIn 0.4s ease-out; }
+                    .stat-card { background: var(--bg-glass); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--border-glass); padding: 20px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); transition: transform 0.2s ease, box-shadow 0.2s ease; }
+                    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3); border-color: rgba(255, 255, 255, 0.15); }
+                    .stat-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); font-weight: 600; border-bottom: 1px solid var(--border-glass); padding-bottom: 8px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+                    .stat-content { font-size: 14px; color: #f8fafc; line-height: 1.6; display: flex; flex-direction: column; gap: 6px; }
+                    .stat-item { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+                    .stat-label { color: var(--text-secondary); font-weight: 500; }
+                    .stat-value { font-weight: 600; font-size: 15px; }
+                    .stat-value.highlight-green { color: #34d399; }
+                    .stat-value.highlight-yellow { color: #fbbf24; }
+                    .stat-value.highlight-red { color: #f87171; }
+                    .stat-value.highlight-blue { color: #60a5fa; }
+                    .stat-value.highlight-purple { color: #a78bfa; }
+                    
                     .loading {
                         display: none;
                         color: #60a5fa;
@@ -279,14 +294,35 @@ const server = http.createServer(async (req, res) => {
                                 <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                                 Create Custom Record
                             </button>
-                            <span id="recordCount" class="stats-text" style="white-space: nowrap;"></span>
-                            <span id="attendeesCount" class="stats-text" style="white-space: nowrap; display: none; margin-left: 12px !important; border-color: rgba(59, 130, 246, 0.3);"></span>
-                            <span id="deptCount" class="stats-text" style="white-space: nowrap; display: none; margin-left: 12px !important; border-color: rgba(16, 185, 129, 0.3);"></span>
                             <span class="loading" id="loading">
                                 <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px; animation: spin 1s linear infinite;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                                 Processing...
                             </span>
                             <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+                        </div>
+                    </div>
+                    
+                    <div id="statsDashboard" class="stats-grid" style="display:none;">
+                        <div class="stat-card">
+                            <div class="stat-title">
+                                <svg style="width:14px; height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                Records & Status
+                            </div>
+                            <div id="recordCount" class="stat-content"></div>
+                        </div>
+                        <div class="stat-card" id="attendeesCard" style="display:none;">
+                            <div class="stat-title">
+                                <svg style="width:14px; height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                                Attendees Breakdown
+                            </div>
+                            <div id="attendeesCount" class="stat-content"></div>
+                        </div>
+                        <div class="stat-card" id="deptCard" style="display:none;">
+                            <div class="stat-title">
+                                <svg style="width:14px; height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                                Top Departments
+                            </div>
+                            <div id="deptCount" class="stat-content"></div>
                         </div>
                     </div>
                     
@@ -407,7 +443,7 @@ const server = http.createServer(async (req, res) => {
                                         }
                                     }
 
-                                    if (s !== 'rejected' && Array.isArray(item.attendees)) {
+                                    if ((s === 'approved' || s === 'accepted') && Array.isArray(item.attendees)) {
                                         item.attendees.forEach(attendee => {
                                             if (attendee && attendee.program) {
                                                 const prog = String(attendee.program).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
@@ -421,33 +457,48 @@ const server = http.createServer(async (req, res) => {
                                 
                                 const attendeesCountEl = document.getElementById('attendeesCount');
                                 const deptCountEl = document.getElementById('deptCount');
+                                const statsDashboard = document.getElementById('statsDashboard');
+                                const attendeesCard = document.getElementById('attendeesCard');
+                                const deptCard = document.getElementById('deptCard');
 
-                                if (hasStatus) {
-                                    countEl.innerHTML = 'Total: <strong>' + data.length + '</strong>' +
-                                        ' &nbsp;|&nbsp; <span style="color:#f59e0b;">Pending: ' + pending + '</span>' +
-                                        ' &nbsp;|&nbsp; <span style="color:#10b981;">Accepted: ' + approved + '</span>' +
-                                        ' &nbsp;|&nbsp; <span style="color:#ef4444;">Rejected: ' + rejected + '</span>';
-                                        
-                                    if (attendeesCountEl) {
-                                        attendeesCountEl.style.display = 'inline-block';
-                                        const confText = confirmedAttendees + ' (' + confirmedF + 'f, ' + confirmedM + 'm)';
-                                        const unconfText = unconfirmedAttendees + ' (' + unconfirmedF + 'f, ' + unconfirmedM + 'm)';
-                                        attendeesCountEl.innerHTML = '<span style="color:#10b981;">Confirmed Attendees: ' + confText + '</span>' +
-                                            ' &nbsp;|&nbsp; <span style="color:#f59e0b;">Unconfirmed Attendees: ' + unconfText + '</span>';
-                                    }
+                                if (hasStatus || data.length > 0) {
+                                    if (statsDashboard) statsDashboard.style.display = 'grid';
                                 } else {
-                                    countEl.innerText = 'Total Records: ' + data.length;
-                                    if (attendeesCountEl) attendeesCountEl.style.display = 'none';
+                                    if (statsDashboard) statsDashboard.style.display = 'none';
                                 }
 
-                                if (deptCountEl) {
+                                if (hasStatus) {
+                                    countEl.innerHTML = 
+                                        '<div class="stat-item"><span class="stat-label">Total Records:</span> <span class="stat-value">' + data.length + '</span></div>' +
+                                        '<div class="stat-item"><span class="stat-label">Pending:</span> <span class="stat-value highlight-yellow">' + pending + '</span></div>' +
+                                        '<div class="stat-item"><span class="stat-label">Approved:</span> <span class="stat-value highlight-green">' + approved + '</span></div>' +
+                                        '<div class="stat-item"><span class="stat-label">Rejected:</span> <span class="stat-value highlight-red">' + rejected + '</span></div>';
+                                        
+                                    if (attendeesCountEl && attendeesCard) {
+                                        attendeesCard.style.display = 'flex';
+                                        const confText = confirmedAttendees + ' <span style="font-size:12px; color:var(--text-secondary);">(' + confirmedF + 'f, ' + confirmedM + 'm)</span>';
+                                        const unconfText = unconfirmedAttendees + ' <span style="font-size:12px; color:var(--text-secondary);">(' + unconfirmedF + 'f, ' + unconfirmedM + 'm)</span>';
+                                        attendeesCountEl.innerHTML = 
+                                            '<div class="stat-item"><span class="stat-label">Confirmed:</span> <span class="stat-value highlight-green">' + confText + '</span></div>' +
+                                            '<div class="stat-item"><span class="stat-label">Unconfirmed:</span> <span class="stat-value highlight-yellow">' + unconfText + '</span></div>';
+                                    }
+                                } else {
+                                    countEl.innerHTML = '<div class="stat-item"><span class="stat-label">Total Records:</span> <span class="stat-value">' + data.length + '</span></div>';
+                                    if (attendeesCard) attendeesCard.style.display = 'none';
+                                }
+
+                                if (deptCountEl && deptCard) {
                                     const deptKeys = Object.keys(deptStats).sort((a,b) => deptStats[b] - deptStats[a]);
                                     if (deptKeys.length > 0) {
-                                        deptCountEl.style.display = 'inline-block';
-                                        const deptHtml = deptKeys.map(k => '<strong>' + k + ':</strong> ' + deptStats[k]).join(' &nbsp;|&nbsp; ');
-                                        deptCountEl.innerHTML = '<span style="color:#a78bfa;">' + deptHtml + '</span>';
+                                        deptCard.style.display = 'flex';
+                                        const topKeys = deptKeys.slice(0, 5); // Limit to top 5 for clean UI
+                                        const deptHtml = topKeys.map(k => '<div class="stat-item"><span class="stat-label">' + k + '</span> <span class="stat-value highlight-purple">' + deptStats[k] + '</span></div>').join('');
+                                        const otherKeys = deptKeys.slice(5);
+                                        const othersHtml = otherKeys.length > 0 ? '<div class="stat-item"><span class="stat-label">Others</span> <span class="stat-value highlight-blue">' + otherKeys.reduce((acc, k) => acc + deptStats[k], 0) + '</span></div>' : '';
+                                        
+                                        deptCountEl.innerHTML = deptHtml + othersHtml;
                                     } else {
-                                        deptCountEl.style.display = 'none';
+                                        deptCard.style.display = 'none';
                                     }
                                 }
                             }
