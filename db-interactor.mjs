@@ -154,6 +154,34 @@ const server = http.createServer(async (req, res) => {
                         background: linear-gradient(135deg, var(--accent-green-hover), var(--accent-green));
                         box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3);
                     }
+                    button.action-btn {
+                        padding: 6px 12px;
+                        font-size: 12px;
+                        border-radius: 6px;
+                        border: none;
+                        box-shadow: none;
+                        font-weight: 500;
+                        transition: all 0.2s ease;
+                        backdrop-filter: blur(4px);
+                    }
+                    button.action-btn.edit {
+                        background: rgba(59, 130, 246, 0.15);
+                        color: #60a5fa;
+                        border: 1px solid rgba(59, 130, 246, 0.3);
+                    }
+                    button.action-btn.edit:hover {
+                        background: rgba(59, 130, 246, 0.25);
+                        transform: translateY(-1px);
+                    }
+                    button.action-btn.delete {
+                        background: rgba(239, 68, 68, 0.15);
+                        color: #f87171;
+                        border: 1px solid rgba(239, 68, 68, 0.3);
+                    }
+                    button.action-btn.delete:hover {
+                        background: rgba(239, 68, 68, 0.25);
+                        transform: translateY(-1px);
+                    }
                     /* Table */
                     .table-container, .table-wrapper {
                         background: var(--bg-glass);
@@ -348,7 +376,7 @@ const server = http.createServer(async (req, res) => {
                 <div id="createModal" class="modal-overlay">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h2>Insert New Record</h2>
+                            <h2 id="modalTitle">Insert New Record</h2>
                             <span class="modal-close" onclick="closeCreateModal()">&times;</span>
                         </div>
                         <div id="dynamicFormContainer">
@@ -358,7 +386,7 @@ const server = http.createServer(async (req, res) => {
                             <button style="background: transparent; border: 1px solid var(--border-glass);" onclick="closeCreateModal()">Cancel</button>
                             <button class="create-btn" id="insertBtn" onclick="submitCustomRecord()">
                                 <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                Insert into Database
+                                <span id="insertBtnText">Insert into Database</span>
                             </button>
                         </div>
                     </div>
@@ -369,6 +397,9 @@ const server = http.createServer(async (req, res) => {
                     let lastFetchedData = []; // Store fetched data
                     let currentRandomMs = 0;
                     let currentCropper = null;
+                    let currentEditDocId = null;
+                    let initialFormData = null;
+
 
                     function showImage(src) {
                         document.getElementById('modalImage').src = src;
@@ -655,7 +686,7 @@ const server = http.createServer(async (req, res) => {
                                 }
                                 html += '<td>' + displayVal + '</td>';
                             });
-                            html += '<td style="text-align:right;"><button class="delete-btn" onclick="deleteRecord(\\'' + item._docId + '\\')">Delete</button></td>';
+                            html += '<td style="text-align:right;"><div style="display:inline-flex; gap:8px; justify-content:flex-end;"><button class="action-btn edit" onclick="openCreateModal(\\'' + item._docId + '\\')">Edit</button><button class="action-btn delete" onclick="deleteRecord(\\'' + item._docId + '\\')">Delete</button></div></td>';
                             html += '</tr>';
                         });
 
@@ -665,7 +696,13 @@ const server = http.createServer(async (req, res) => {
 
                     // ====== MODAL & INSERT LOGIC ======
                     
-                    function openCreateModal() {
+                    function openCreateModal(editDocId = null) {
+                        currentEditDocId = typeof editDocId === 'string' ? editDocId : null;
+                        const isEdit = !!currentEditDocId;
+                        document.getElementById('modalTitle').innerText = isEdit ? 'Edit Record' : 'Insert New Record';
+                        const insertBtnText = document.getElementById('insertBtnText');
+                        if (insertBtnText) insertBtnText.innerText = isEdit ? 'Update Record' : 'Insert into Database';
+                        
                         currentRandomMs = Math.floor(Math.random() * 1000);
                         if (currentColumns.length === 0) {
                             currentColumns = ['id', 'ticketType', 'amount', 'quantity', 'paymentProof', 'status', 'attendees', 'createdAt']; // accurate fallback
@@ -736,21 +773,41 @@ const server = http.createServer(async (req, res) => {
                         
                         document.getElementById('dynamicFormContainer').innerHTML = html;
                         
-                        // Pre-fill some defaults
-                        if (document.getElementById('input_createdAt')) {
-                            const now = new Date();
-                            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-                            // Slice to 19 to include seconds (e.g., 2026-06-29T20:34:02)
-                            document.getElementById('input_createdAt').value = now.toISOString().slice(0,19);
-                        }
-                        
                         const createdAtInput = document.getElementById('input_createdAt');
                         const idInput = document.getElementById('input_id');
                         const idError = document.getElementById('id_error');
                         const insertBtn = document.getElementById('insertBtn');
+
+                        // Pre-fill existing data or defaults
+                        if (isEdit) {
+                            const itemToEdit = lastFetchedData.find(d => d._docId === currentEditDocId);
+                            if (itemToEdit) {
+                                currentColumns.forEach(col => {
+                                    const el = document.getElementById('input_' + col);
+                                    if (el) {
+                                        let val = itemToEdit[col];
+                                        if (col === 'createdAt' && val) {
+                                            const d = new Date(val.seconds * 1000 + (val.nanoseconds ? val.nanoseconds / 1000000 : 0));
+                                            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                                            el.value = d.toISOString().slice(0, 19);
+                                        } else if (col === 'attendees') {
+                                            el.value = JSON.stringify(val, null, 2);
+                                        } else if (val !== undefined && val !== null) {
+                                            el.value = val;
+                                        }
+                                    }
+                                });
+                            }
+                        } else {
+                            if (createdAtInput) {
+                                const now = new Date();
+                                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                                createdAtInput.value = now.toISOString().slice(0,19);
+                            }
+                        }
                         
                         function updateId() {
-                            if (createdAtInput && idInput) {
+                            if (createdAtInput && idInput && !isEdit) {
                                 const dateObj = new Date(createdAtInput.value);
                                 if (!isNaN(dateObj.getTime())) {
                                     const timeWithMs = dateObj.getTime() + currentRandomMs;
@@ -776,8 +833,8 @@ const server = http.createServer(async (req, res) => {
                             }
                         }
                         
-                        if (createdAtInput) createdAtInput.addEventListener('input', updateId);
-                        updateId(); // Run initial calculation
+                        if (createdAtInput && !isEdit) createdAtInput.addEventListener('input', updateId);
+                        if (!isEdit) updateId(); // Run initial calculation
                         
                         const baseInput = document.getElementById('input_baseAmount');
                         const qtyInput = document.getElementById('input_quantity');
@@ -976,6 +1033,45 @@ const server = http.createServer(async (req, res) => {
                             });
                         }
                         
+                        if (isEdit) {
+                            const itemToEdit = lastFetchedData.find(d => d._docId === currentEditDocId);
+                            if (itemToEdit && itemToEdit.paymentProof && typeof itemToEdit.paymentProof === 'string' && itemToEdit.paymentProof.startsWith('data:image')) {
+                                updateProofPreview(itemToEdit.paymentProof);
+                                if (proofSelect) proofSelect.value = itemToEdit.paymentProof;
+                            }
+                            
+                            initialFormData = {};
+                            currentColumns.forEach(col => {
+                                const el = document.getElementById('input_' + col);
+                                if (el) initialFormData[col] = el.value;
+                            });
+                            if (proofHidden) initialFormData['paymentProof'] = proofHidden.value;
+                            
+                            insertBtn.disabled = true; insertBtn.style.opacity = '0.5'; insertBtn.style.cursor = 'not-allowed';
+                            
+                            const checkChanges = () => {
+                                let hasChanged = false;
+                                currentColumns.forEach(col => {
+                                    const el = document.getElementById('input_' + col);
+                                    if (el && el.value !== initialFormData[col]) hasChanged = true;
+                                });
+                                if (proofHidden && proofHidden.value !== initialFormData['paymentProof']) hasChanged = true;
+                                
+                                if (hasChanged) {
+                                    insertBtn.disabled = false; insertBtn.style.opacity = '1'; insertBtn.style.cursor = 'pointer';
+                                } else {
+                                    insertBtn.disabled = true; insertBtn.style.opacity = '0.5'; insertBtn.style.cursor = 'not-allowed';
+                                }
+                            };
+                            
+                            currentColumns.forEach(col => {
+                                const el = document.getElementById('input_' + col);
+                                if (el) el.addEventListener('input', checkChanges);
+                            });
+                            if (proofSelect) proofSelect.addEventListener('change', () => setTimeout(checkChanges, 100));
+                            if (proofFile) proofFile.addEventListener('change', () => setTimeout(checkChanges, 100));
+                        }
+                        
                         document.getElementById('createModal').style.display = 'flex';
                     }
                     
@@ -1014,8 +1110,11 @@ const server = http.createServer(async (req, res) => {
                         closeCreateModal();
                         
                         try {
-                            const res = await fetch('/api/create_custom?collection=' + col, {
-                                method: 'POST',
+                            const isEdit = !!currentEditDocId;
+                            const endpoint = isEdit ? '/api/update?collection=' + col + '&id=' + currentEditDocId : '/api/create_custom?collection=' + col;
+                            const method = isEdit ? 'PUT' : 'POST';
+                            const res = await fetch(endpoint, {
+                                method: method,
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify(payload)
                             });
@@ -1090,6 +1189,34 @@ const server = http.createServer(async (req, res) => {
                 const docRef = await addDoc(collection(db, colName), payload);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ id: docRef.id }));
+            } catch (error) {
+                res.writeHead(500);
+                res.end(error.message);
+            }
+        });
+    } else if (req.method === 'PUT' && req.url.startsWith('/api/update')) {
+        let body = '';
+        req.on('data', chunk => body += chunk.toString());
+        req.on('end', async () => {
+            try {
+                const url = new URL(req.url, 'http://localhost');
+                const colName = url.searchParams.get('collection');
+                const id = url.searchParams.get('id');
+                if (!colName || !id) throw new Error('Collection and ID required');
+                
+                const payload = JSON.parse(body);
+                
+                if (payload.createdAt) {
+                    const dateObj = new Date(payload.createdAt);
+                    payload.createdAt = {
+                        seconds: Math.floor(dateObj.getTime() / 1000),
+                        nanoseconds: (dateObj.getTime() % 1000) * 1000000
+                    };
+                }
+                
+                await updateDoc(doc(db, colName, id), payload);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
             } catch (error) {
                 res.writeHead(500);
                 res.end(error.message);
