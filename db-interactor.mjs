@@ -776,6 +776,8 @@ const server = http.createServer(async (req, res) => {
                                     html += '<div id="cropper_wrapper" style="display:none; margin-top: 8px; width: 100%; max-height: 400px; overflow: hidden; border-radius: 8px; border: 1px solid var(--border-glass);"><img id="paymentProof_cropper_img" style="display:block; max-width: 100%;" /></div>';
                                     html += '<div id="cropper_actions" style="display:none; margin-top: 8px; gap: 8px;"><button type="button" id="btn_done_crop" class="create-btn" style="padding: 8px 16px; font-size: 13px;">Done Cropping</button></div>';
                                     html += '<input type="hidden" id="input_paymentProof" />';
+                                } else if (col === 'ticketType') {
+                                    html += '<input type="text" id="input_' + col + '" value="Full Experience" />';
                                 } else {
                                     html += '<input type="text" id="input_' + col + '" />';
                                 }
