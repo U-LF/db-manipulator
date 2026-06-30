@@ -687,13 +687,13 @@ const server = http.createServer(async (req, res) => {
                                 
                                 const sample = { 
                                     name: "Test User", 
-                                    gender: "Male",
+                                    gender: "male/female",
                                     phone: "03211234567",
-                                    batch: "F2021",
-                                    program: "BSCS", 
-                                    studentId: "F2021266XXX",
-                                    email: "test@example.com",
-                                    emergencyName: "John Doe",
+                                    batch: "F2022",
+                                    program: "BSSE", 
+                                    studentId: "F2022065XXX",
+                                    email: "f2022065xxx@umt.edu.pk",
+                                    emergencyName: "User",
                                     emergencyPhone: "03001234567",
                                     notes: "None"
                                 };
