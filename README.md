@@ -40,6 +40,7 @@ Ensure your Firebase configuration object matches your project settings. Current
 - **Web Interface:** A sleek, glassmorphism-styled dashboard for database interaction.
 - **Data Fetching:** Fetch existing records from Firestore collections.
 - **Data Creation:** Add new documents to your Firestore collections directly from the web interface.
+- **Interactive Image Cropping:** Upload or select images for records and use the built-in crop tool to resize/adjust images before inserting them into the database.
 - **Direct Database Access:** Handles CORS and directly communicates with Firestore using the Firebase JS SDK on the server side, while serving a custom UI.
 
 ## Technologies Used
@@ -47,3 +48,4 @@ Ensure your Firebase configuration object matches your project settings. Current
 - **Node.js**: Backend server (`http.createServer`) to handle API endpoints and serve the HTML.
 - **Firebase Firestore**: Cloud NoSQL database for data storage.
 - **Vanilla HTML/CSS/JS**: For the frontend user interface, styled with modern CSS features.
+- **Cropper.js**: For client-side image cropping within the data creation modal.

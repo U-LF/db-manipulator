@@ -30,6 +30,8 @@ const server = http.createServer(async (req, res) => {
                 <link rel="preconnect" href="https://fonts.googleapis.com">
                 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
                 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+                <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" rel="stylesheet">
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
                 <style>
                     :root {
                         --bg-main: #050505;
@@ -328,6 +330,7 @@ const server = http.createServer(async (req, res) => {
                     let currentColumns = []; // Store the schema so we can build the form
                     let lastFetchedData = []; // Store fetched data
                     let currentRandomMs = 0;
+                    let currentCropper = null;
 
                     function showImage(src) {
                         document.getElementById('modalImage').src = src;
@@ -598,7 +601,12 @@ const server = http.createServer(async (req, res) => {
                                     });
                                     html += '</select>';
                                     html += '<input type="file" id="input_paymentProof_file" accept="image/*" />';
-                                    html += '<img id="paymentProof_preview" src="" style="display:none; max-height: 200px; max-width: 100%; margin-top: 8px; border-radius: 4px;" />';
+                                    html += '<div id="paymentProof_preview_container" style="display:none; margin-top: 8px; text-align: left;">';
+                                    html += '<img id="paymentProof_preview" src="" style="display:block; max-height: 200px; max-width: 100%; margin-bottom: 8px; border-radius: 4px; border: 1px solid var(--border-glass);" />';
+                                    html += '<button type="button" id="btn_open_crop" class="fetch-btn" style="padding: 6px 12px; font-size: 12px; background: rgba(59, 130, 246, 0.6);">Crop Image</button>';
+                                    html += '</div>';
+                                    html += '<div id="cropper_wrapper" style="display:none; margin-top: 8px; width: 100%; max-height: 400px; overflow: hidden; border-radius: 8px; border: 1px solid var(--border-glass);"><img id="paymentProof_cropper_img" style="display:block; max-width: 100%;" /></div>';
+                                    html += '<div id="cropper_actions" style="display:none; margin-top: 8px; gap: 8px;"><button type="button" id="btn_done_crop" class="create-btn" style="padding: 8px 16px; font-size: 13px;">Done Cropping</button></div>';
                                     html += '<input type="hidden" id="input_paymentProof" />';
                                 } else {
                                     html += '<input type="text" id="input_' + col + '" />';
@@ -715,15 +723,65 @@ const server = http.createServer(async (req, res) => {
                         const proofHidden = document.getElementById('input_paymentProof');
                         
                         function updateProofPreview(base64) {
-                            if (base64) {
-                                proofPreview.src = base64;
-                                proofPreview.style.display = 'block';
-                                proofHidden.value = base64;
-                            } else {
-                                proofPreview.src = '';
-                                proofPreview.style.display = 'none';
-                                proofHidden.value = '';
+                            const previewContainer = document.getElementById('paymentProof_preview_container');
+                            const wrapper = document.getElementById('cropper_wrapper');
+                            const actions = document.getElementById('cropper_actions');
+                            const img = document.getElementById('paymentProof_cropper_img');
+                            const btnOpenCrop = document.getElementById('btn_open_crop');
+                            const btnDoneCrop = document.getElementById('btn_done_crop');
+                            
+                            if (currentCropper) {
+                                currentCropper.destroy();
+                                currentCropper = null;
                             }
+                            
+                            if (!base64) {
+                                previewContainer.style.display = 'none';
+                                wrapper.style.display = 'none';
+                                actions.style.display = 'none';
+                                proofPreview.src = '';
+                                proofHidden.value = '';
+                                return;
+                            }
+                            
+                            proofPreview.src = base64;
+                            proofHidden.value = base64; // Ensures DB gets value even if not cropped
+                            previewContainer.style.display = 'block';
+                            wrapper.style.display = 'none';
+                            actions.style.display = 'none';
+                            
+                            btnOpenCrop.onclick = function() {
+                                previewContainer.style.display = 'none';
+                                wrapper.style.display = 'block';
+                                actions.style.display = 'flex';
+                                
+                                img.onload = function() {
+                                    if (currentCropper) currentCropper.destroy();
+                                    currentCropper = new Cropper(img, {
+                                        viewMode: 1,
+                                        background: false,
+                                        autoCropArea: 1,
+                                    });
+                                };
+                                img.src = proofHidden.value; // load from current valid base64
+                            };
+                            
+                            btnDoneCrop.onclick = function() {
+                                if (currentCropper) {
+                                    const canvas = currentCropper.getCroppedCanvas();
+                                    const croppedBase64 = canvas.toDataURL('image/jpeg', 0.9);
+                                    
+                                    currentCropper.destroy();
+                                    currentCropper = null;
+                                    
+                                    wrapper.style.display = 'none';
+                                    actions.style.display = 'none';
+                                    
+                                    proofPreview.src = croppedBase64;
+                                    proofHidden.value = croppedBase64;
+                                    previewContainer.style.display = 'block';
+                                }
+                            };
                         }
 
                         if (proofSelect) {
@@ -803,6 +861,10 @@ const server = http.createServer(async (req, res) => {
                     }
                     
                     function closeCreateModal() {
+                        if (currentCropper) {
+                            currentCropper.destroy();
+                            currentCropper = null;
+                        }
                         document.getElementById('createModal').style.display = 'none';
                     }
                     
