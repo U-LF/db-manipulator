@@ -33,6 +33,8 @@ const server = http.createServer(async (req, res) => {
                 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" rel="stylesheet">
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
                 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
                 <style>
                     :root {
                         --bg-main: #050505;
@@ -323,6 +325,10 @@ const server = http.createServer(async (req, res) => {
                                 <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                                 Create Custom Record
                             </button>
+                            <button class="create-btn" id="downloadBtn" onclick="openDownloadModal()" disabled style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                                <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                Download Records
+                            </button>
                             <span class="loading" id="loading">
                                 <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px; animation: spin 1s linear infinite;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                                 Processing...
@@ -404,6 +410,41 @@ const server = http.createServer(async (req, res) => {
                         </div>
                     </div>
                 </div>
+                
+                <!-- Download Records Modal -->
+                <div id="downloadModal" class="modal-overlay" style="display:none;">
+                    <div class="modal-content" style="max-width: 400px;">
+                        <div class="modal-header">
+                            <h2>Download Records</h2>
+                            <span class="modal-close" onclick="document.getElementById('downloadModal').style.display='none'">&times;</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 16px; padding-top: 16px;">
+                            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; color: white;">
+                                <input type="checkbox" id="dl-all" onchange="toggleDownloadAll()" style="width: 18px; height: 18px; cursor: pointer;">
+                                All Records
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; color: white;">
+                                <input type="checkbox" id="dl-accepted" class="dl-status-check" value="approved" style="width: 18px; height: 18px; cursor: pointer;">
+                                Accepted (Approved)
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; color: white;">
+                                <input type="checkbox" id="dl-pending" class="dl-status-check" value="pending" style="width: 18px; height: 18px; cursor: pointer;">
+                                Pending
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; color: white;">
+                                <input type="checkbox" id="dl-rejected" class="dl-status-check" value="rejected" style="width: 18px; height: 18px; cursor: pointer;">
+                                Rejected
+                            </label>
+                        </div>
+                        <div style="margin-top: 32px; display: flex; justify-content: flex-end; gap: 12px;">
+                            <button style="background: transparent; border: 1px solid var(--border-glass); padding: 10px 16px; color: var(--text-primary); border-radius: 8px; cursor: pointer;" onclick="document.getElementById('downloadModal').style.display='none'">Cancel</button>
+                            <button class="create-btn" onclick="executeDownload()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                                <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                Download PDF
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
                 <script>
                     let currentColumns = []; // Store the schema so we can build the form
@@ -414,6 +455,130 @@ const server = http.createServer(async (req, res) => {
                     let initialFormData = null;
                     let currentChart = null;
 
+                    function openDownloadModal() {
+                        document.getElementById('dl-all').checked = true;
+                        toggleDownloadAll();
+                        document.getElementById('downloadModal').style.display = 'flex';
+                    }
+
+                    function toggleDownloadAll() {
+                        const isAll = document.getElementById('dl-all').checked;
+                        const checks = document.querySelectorAll('.dl-status-check');
+                        checks.forEach(c => {
+                            if (isAll) {
+                                c.checked = true;
+                                c.disabled = true;
+                            } else {
+                                c.disabled = false;
+                            }
+                        });
+                    }
+
+                    function executeDownload() {
+                        const isAll = document.getElementById('dl-all').checked;
+                        let selectedStatuses = [];
+                        if (!isAll) {
+                            document.querySelectorAll('.dl-status-check:checked').forEach(c => {
+                                selectedStatuses.push(c.value);
+                            });
+                            if (selectedStatuses.length === 0) {
+                                alert("Please select at least one status or check 'All Records'.");
+                                return;
+                            }
+                        }
+
+                        let recordsToExport = lastFetchedData;
+                        if (!isAll) {
+                            recordsToExport = recordsToExport.filter(r => {
+                                const status = String(r.status || '').toLowerCase();
+                                if (status === 'approved' || status === 'accepted') return selectedStatuses.includes('approved');
+                                return selectedStatuses.includes(status);
+                            });
+                        }
+
+                        if (recordsToExport.length === 0) {
+                            alert("No records match the selected statuses.");
+                            return;
+                        }
+
+                        const { jsPDF } = window.jspdf;
+                        const doc = new jsPDF('landscape');
+                        
+                        const headers = currentColumns.filter(c => !['_id', '__v', 'rejectionReason', 'createdAt', 'updatedAt'].includes(c));
+                        
+                        const body = recordsToExport.map(record => {
+                            const arr = headers.map(header => {
+                                let val = record[header];
+                                if (val === null || val === undefined) return '';
+                                if (typeof val === 'string' && val.startsWith('data:image')) {
+                                    return ''; // Leave empty, will draw in didDrawCell
+                                }
+                                if (typeof val === 'object') {
+                                    if (Array.isArray(val)) {
+                                        return val.map((item, idx) => {
+                                            if (typeof item === 'object' && item !== null) {
+                                                let str = '[Attendee ' + (idx + 1) + ']\\n';
+                                                str += Object.entries(item)
+                                                    .filter(([k, v]) => v !== null && v !== '' && k !== 'id' && k !== '_id')
+                                                    .map(([k, v]) => '• ' + k.charAt(0).toUpperCase() + k.slice(1) + ': ' + v)
+                                                    .join('\\n');
+                                                return str;
+                                            }
+                                            return String(item);
+                                        }).join('\\n\\n');
+                                    }
+                                    return Object.entries(val)
+                                        .filter(([k, v]) => v !== null && v !== '')
+                                        .map(([k, v]) => '• ' + k.charAt(0).toUpperCase() + k.slice(1) + ': ' + v)
+                                        .join('\\n');
+                                }
+                                return String(val);
+                            });
+                            arr._originalRecord = record;
+                            return arr;
+                        });
+
+                        doc.text("Exported Records - SST Admin", 14, 15);
+                        
+                        doc.autoTable({
+                            head: [headers],
+                            body: body,
+                            startY: 20,
+                            styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak', valign: 'middle', minCellHeight: 35 },
+                            headStyles: { fillColor: [16, 185, 129], textColor: 255 },
+                            columnStyles: {
+                                // optional: can constrain widths if needed
+                            },
+                            didDrawCell: function(data) {
+                                if (data.section === 'body') {
+                                    const header = headers[data.column.index];
+                                    const record = data.row.raw && data.row.raw._originalRecord;
+                                    if (!record) return;
+                                    const rawVal = record[header];
+                                    if (typeof rawVal === 'string' && rawVal.startsWith('data:image')) {
+                                        try {
+                                            // Extract format from data:image/png;base64,...
+                                            const match = rawVal.match(/^data:image\\/(png|jpeg|jpg);base64,/i);
+                                            const format = match ? match[1].toUpperCase() : 'JPEG';
+                                            
+                                            // Fit image into cell keeping aspect ratio rough square for simplicity
+                                            const dim = Math.min(data.cell.width - 4, data.cell.height - 4, 31);
+                                            if (dim > 0) {
+                                                const x = data.cell.x + (data.cell.width / 2) - (dim / 2);
+                                                const y = data.cell.y + (data.cell.height / 2) - (dim / 2);
+                                                doc.addImage(rawVal, format, x, y, dim, dim);
+                                            }
+                                        } catch (e) {
+                                            console.warn("Failed to render image for", header, e);
+                                        }
+                                    }
+                                }
+                            }
+                        });
+
+                        doc.save("SST_Records.pdf");
+                        document.getElementById('downloadModal').style.display = 'none';
+                    }
 
                     function showImage(src) {
                         document.getElementById('modalImage').src = src;
@@ -615,8 +780,9 @@ const server = http.createServer(async (req, res) => {
                                         }
                                         
                                         const chartWrapper = document.getElementById('chartWrapper');
-                                        if (chartWrapper) {
-                                            const dynamicWidth = Math.max(labels.length * 50, chartCard.clientWidth - 40);
+                                        const chartCardEl = document.getElementById('chartCard');
+                                        if (chartWrapper && chartCardEl) {
+                                            const dynamicWidth = Math.max(labels.length * 50, chartCardEl.clientWidth - 40);
                                             chartWrapper.style.width = dynamicWidth + 'px';
                                         }
 
@@ -661,6 +827,13 @@ const server = http.createServer(async (req, res) => {
                                 createBtn.disabled = false;
                                 createBtn.style.opacity = '1';
                                 createBtn.style.cursor = 'pointer';
+                            }
+                            
+                            const downloadBtn = document.getElementById('downloadBtn');
+                            if (downloadBtn) {
+                                downloadBtn.disabled = false;
+                                downloadBtn.style.opacity = '1';
+                                downloadBtn.style.cursor = 'pointer';
                             }
                             
                             renderTable(data);
