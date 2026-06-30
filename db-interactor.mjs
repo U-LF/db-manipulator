@@ -341,7 +341,7 @@ const server = http.createServer(async (req, res) => {
                         <div class="stat-card" id="attendeesCard" style="display:none;">
                             <div class="stat-title">
                                 <svg style="width:14px; height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                                Attendees Breakdown
+                                Attendees & Financials
                             </div>
                             <div id="attendeesCount" class="stat-content"></div>
                         </div>
@@ -435,6 +435,7 @@ const server = http.createServer(async (req, res) => {
                                 let confirmedAttendees = 0, unconfirmedAttendees = 0;
                                 let confirmedM = 0, confirmedF = 0;
                                 let unconfirmedM = 0, unconfirmedF = 0;
+                                let confirmedPayment = 0, unconfirmedPayment = 0;
                                 let hasStatus = false;
                                 let deptStats = {};
 
@@ -456,18 +457,21 @@ const server = http.createServer(async (req, res) => {
                                         hasStatus = true;
                                         s = item.status.toLowerCase();
                                         const qty = Number(item.quantity) || 0;
+                                        const amt = Number(item.amount) || 0;
 
                                         if (s === 'pending') {
                                             pending++;
                                             unconfirmedAttendees += qty;
                                             unconfirmedM += mCount;
                                             unconfirmedF += fCount;
+                                            unconfirmedPayment += amt;
                                         }
                                         else if (s === 'approved' || s === 'accepted') {
                                             approved++;
                                             confirmedAttendees += qty;
                                             confirmedM += mCount;
                                             confirmedF += fCount;
+                                            confirmedPayment += amt;
                                         }
                                         else if (s === 'rejected') {
                                             rejected++;
@@ -509,9 +513,17 @@ const server = http.createServer(async (req, res) => {
                                         attendeesCard.style.display = 'flex';
                                         const confText = confirmedAttendees + ' <span style="font-size:12px; color:var(--text-secondary);">(' + confirmedF + 'f, ' + confirmedM + 'm)</span>';
                                         const unconfText = unconfirmedAttendees + ' <span style="font-size:12px; color:var(--text-secondary);">(' + unconfirmedF + 'f, ' + unconfirmedM + 'm)</span>';
+                                        
+                                        const formatter = new Intl.NumberFormat('en-US');
+                                        const confPayText = formatter.format(confirmedPayment) + ' <span style="font-size:12px; font-weight:normal; color:var(--text-secondary);">PKR</span>';
+                                        const unconfPayText = formatter.format(unconfirmedPayment) + ' <span style="font-size:12px; font-weight:normal; color:var(--text-secondary);">PKR</span>';
+
                                         attendeesCountEl.innerHTML = 
                                             '<div class="stat-item"><span class="stat-label">Confirmed:</span> <span class="stat-value highlight-green">' + confText + '</span></div>' +
-                                            '<div class="stat-item"><span class="stat-label">Unconfirmed:</span> <span class="stat-value highlight-yellow">' + unconfText + '</span></div>';
+                                            '<div class="stat-item"><span class="stat-label">Unconfirmed:</span> <span class="stat-value highlight-yellow">' + unconfText + '</span></div>' +
+                                            '<div style="height: 1px; background: var(--border-glass); margin: 6px 0;"></div>' +
+                                            '<div class="stat-item"><span class="stat-label">Conf. Payment:</span> <span class="stat-value highlight-green">' + confPayText + '</span></div>' +
+                                            '<div class="stat-item"><span class="stat-label">Unconf. Payment:</span> <span class="stat-value highlight-yellow">' + unconfPayText + '</span></div>';
                                     }
                                 } else {
                                     countEl.innerHTML = '<div class="stat-item"><span class="stat-label">Total Records:</span> <span class="stat-value">' + data.length + '</span></div>';
