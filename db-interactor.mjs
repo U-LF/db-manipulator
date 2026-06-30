@@ -32,6 +32,7 @@ const server = http.createServer(async (req, res) => {
                 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
                 <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" rel="stylesheet">
                 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+                <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
                 <style>
                     :root {
                         --bg-main: #050505;
@@ -354,6 +355,18 @@ const server = http.createServer(async (req, res) => {
                         </div>
                     </div>
                     
+                    <div class="stat-card" id="chartCard" style="display:none; flex-direction:column; min-width: 0; overflow: hidden; width: 100%; box-sizing: border-box; margin-bottom: 24px;">
+                        <div class="stat-title">
+                            <svg style="width:14px; height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                            Daily Registrations
+                        </div>
+                        <div class="stat-content" style="height: 300px; width: 100%; position: relative; overflow-x: auto;">
+                            <div id="chartWrapper" style="height: 100%; min-width: 100%;">
+                                <canvas id="registrationsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div id="searchContainer" style="display:none; margin-bottom: 24px; align-items: center; gap: 12px; background: rgba(255, 255, 255, 0.03); padding: 16px 24px; border-radius: 12px; border: 1px solid var(--border-glass); box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
                         <svg style="width:20px; height:20px; color:var(--text-secondary);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                         <input type="text" id="searchInput" placeholder="Search by attendee name..." style="width: 300px; padding: 10px 14px; background: var(--input-bg); border: 1px solid var(--border-glass);" onkeydown="if(event.key === 'Enter') searchRecord()" />
@@ -399,6 +412,7 @@ const server = http.createServer(async (req, res) => {
                     let currentCropper = null;
                     let currentEditDocId = null;
                     let initialFormData = null;
+                    let currentChart = null;
 
 
                     function showImage(src) {
@@ -438,6 +452,7 @@ const server = http.createServer(async (req, res) => {
                                 let confirmedPayment = 0, unconfirmedPayment = 0;
                                 let hasStatus = false;
                                 let deptStats = {};
+                                let dailyStats = {};
 
                                 data.forEach(item => {
                                     let s = '';
@@ -475,6 +490,23 @@ const server = http.createServer(async (req, res) => {
                                         }
                                         else if (s === 'rejected') {
                                             rejected++;
+                                        }
+                                    }
+
+                                    if (item.createdAt && item.createdAt.seconds) {
+                                        const d = new Date(item.createdAt.seconds * 1000);
+                                        const year = new Date().getFullYear();
+                                        if (!(d.getMonth() < 5 || (d.getMonth() === 5 && d.getDate() < 25))) {
+                                            const y = d.getFullYear();
+                                            const m = String(d.getMonth() + 1).padStart(2, '0');
+                                            const day = String(d.getDate()).padStart(2, '0');
+                                            const dateKey = y + '-' + m + '-' + day;
+                                            if (!dailyStats[dateKey]) dailyStats[dateKey] = { accepted: 0, pending: 0, rejected: 0 };
+                                            
+                                            const qty = 1;
+                                            if (s === 'approved' || s === 'accepted') dailyStats[dateKey].accepted += qty;
+                                            else if (s === 'pending') dailyStats[dateKey].pending += qty;
+                                            else if (s === 'rejected') dailyStats[dateKey].rejected += qty;
                                         }
                                     }
 
@@ -544,6 +576,83 @@ const server = http.createServer(async (req, res) => {
                                         deptCard.style.display = 'none';
                                     }
                                 }
+                                
+                                const chartCard = document.getElementById('chartCard');
+                                if (chartCard) {
+                                    if (Object.keys(dailyStats).length > 0) {
+                                        chartCard.style.display = 'flex';
+                                        const labels = [];
+                                        const dataAccepted = [];
+                                        const dataPending = [];
+                                        const dataRejected = [];
+                                        
+                                        const targetEnd = new Date(new Date().getFullYear(), 6, 20); // July 20
+                                        let maxDate = targetEnd;
+                                        
+                                        const statKeys = Object.keys(dailyStats).sort();
+                                        if (statKeys.length > 0) {
+                                            const lastKeyDate = new Date(statKeys[statKeys.length - 1]);
+                                            if (lastKeyDate > maxDate) maxDate = lastKeyDate;
+                                        }
+
+                                        let curr = new Date(new Date().getFullYear(), 5, 25);
+                                        
+                                        while (curr <= maxDate) {
+                                            const y = curr.getFullYear();
+                                            const m = String(curr.getMonth() + 1).padStart(2, '0');
+                                            const day = String(curr.getDate()).padStart(2, '0');
+                                            const dateKey = y + '-' + m + '-' + day;
+                                            
+                                            labels.push(curr.toLocaleString('en-US', { month: 'short', day: 'numeric' }));
+                                            
+                                            const stats = dailyStats[dateKey] || { accepted: 0, pending: 0, rejected: 0 };
+                                            dataAccepted.push(stats.accepted);
+                                            dataPending.push(stats.pending);
+                                            dataRejected.push(stats.rejected);
+                                            
+                                            curr.setDate(curr.getDate() + 1);
+                                            if (labels.length > 365) break;
+                                        }
+                                        
+                                        const chartWrapper = document.getElementById('chartWrapper');
+                                        if (chartWrapper) {
+                                            const dynamicWidth = Math.max(labels.length * 50, chartCard.clientWidth - 40);
+                                            chartWrapper.style.width = dynamicWidth + 'px';
+                                        }
+
+                                        const ctx = document.getElementById('registrationsChart');
+                                        if (currentChart) {
+                                            currentChart.destroy();
+                                        }
+                                        
+                                        currentChart = new Chart(ctx, {
+                                            type: 'bar',
+                                            data: {
+                                                labels: labels,
+                                                datasets: [
+                                                    { label: 'Accepted', data: dataAccepted, backgroundColor: '#10b981', stack: 'Stack 0', borderRadius: 4, maxBarThickness: 24 },
+                                                    { label: 'Pending', data: dataPending, backgroundColor: '#eab308', stack: 'Stack 0', borderRadius: 4, maxBarThickness: 24 },
+                                                    { label: 'Rejected', data: dataRejected, backgroundColor: '#ef4444', stack: 'Stack 0', borderRadius: 4, maxBarThickness: 24 }
+                                                ]
+                                            },
+                                            options: {
+                                                responsive: true,
+                                                maintainAspectRatio: false,
+                                                plugins: {
+                                                    legend: { labels: { color: '#e2e8f0', font: { family: 'Inter' } } }
+                                                },
+                                                scales: {
+                                                    x: { stacked: true, ticks: { color: '#94a3b8', font: { family: 'Inter' } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                                    y: { stacked: true, ticks: { color: '#94a3b8', stepSize: 1, font: { family: 'Inter' } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                                                }
+                                            }
+                                        });
+                                    } else {
+                                        chartCard.style.display = 'none';
+                                    }
+                                }
+                                
+                                // Render table logic continues here
                             }
                             
                             lastFetchedData = data;
