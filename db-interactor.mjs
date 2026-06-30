@@ -280,6 +280,8 @@ const server = http.createServer(async (req, res) => {
                                 Create Custom Record
                             </button>
                             <span id="recordCount" class="stats-text" style="white-space: nowrap;"></span>
+                            <span id="attendeesCount" class="stats-text" style="white-space: nowrap; display: none; margin-left: 12px !important; border-color: rgba(59, 130, 246, 0.3);"></span>
+                            <span id="deptCount" class="stats-text" style="white-space: nowrap; display: none; margin-left: 12px !important; border-color: rgba(16, 185, 129, 0.3);"></span>
                             <span class="loading" id="loading">
                                 <svg style="width:16px; height:16px; display:inline; vertical-align:-3px; margin-right:4px; animation: spin 1s linear infinite;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                                 Processing...
@@ -363,24 +365,90 @@ const server = http.createServer(async (req, res) => {
                             const countEl = document.getElementById('recordCount');
                             if (countEl) {
                                 let pending = 0, approved = 0, rejected = 0;
+                                let confirmedAttendees = 0, unconfirmedAttendees = 0;
+                                let confirmedM = 0, confirmedF = 0;
+                                let unconfirmedM = 0, unconfirmedF = 0;
                                 let hasStatus = false;
+                                let deptStats = {};
+
                                 data.forEach(item => {
+                                    let s = '';
+                                    let mCount = 0, fCount = 0;
+
+                                    if (Array.isArray(item.attendees)) {
+                                        item.attendees.forEach(attendee => {
+                                            if (attendee && attendee.gender) {
+                                                const g = String(attendee.gender).toLowerCase().trim();
+                                                if (g === 'male' || g === 'm') mCount++;
+                                                else if (g === 'female' || g === 'f') fCount++;
+                                            }
+                                        });
+                                    }
+
                                     if (item.status) {
                                         hasStatus = true;
-                                        const s = item.status.toLowerCase();
-                                        if (s === 'pending') pending++;
-                                        else if (s === 'approved' || s === 'accepted') approved++;
-                                        else if (s === 'rejected') rejected++;
+                                        s = item.status.toLowerCase();
+                                        const qty = Number(item.quantity) || 0;
+
+                                        if (s === 'pending') {
+                                            pending++;
+                                            unconfirmedAttendees += qty;
+                                            unconfirmedM += mCount;
+                                            unconfirmedF += fCount;
+                                        }
+                                        else if (s === 'approved' || s === 'accepted') {
+                                            approved++;
+                                            confirmedAttendees += qty;
+                                            confirmedM += mCount;
+                                            confirmedF += fCount;
+                                        }
+                                        else if (s === 'rejected') {
+                                            rejected++;
+                                        }
+                                    }
+
+                                    if (s !== 'rejected' && Array.isArray(item.attendees)) {
+                                        item.attendees.forEach(attendee => {
+                                            if (attendee && attendee.program) {
+                                                const prog = String(attendee.program).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                                                if (prog) {
+                                                    deptStats[prog] = (deptStats[prog] || 0) + 1;
+                                                }
+                                            }
+                                        });
                                     }
                                 });
                                 
+                                const attendeesCountEl = document.getElementById('attendeesCount');
+                                const deptCountEl = document.getElementById('deptCount');
+
                                 if (hasStatus) {
                                     countEl.innerHTML = 'Total: <strong>' + data.length + '</strong>' +
                                         ' &nbsp;|&nbsp; <span style="color:#f59e0b;">Pending: ' + pending + '</span>' +
                                         ' &nbsp;|&nbsp; <span style="color:#10b981;">Accepted: ' + approved + '</span>' +
                                         ' &nbsp;|&nbsp; <span style="color:#ef4444;">Rejected: ' + rejected + '</span>';
+                                        
+                                    if (attendeesCountEl) {
+                                        attendeesCountEl.style.display = 'inline-block';
+                                        const confText = confirmedAttendees + ' (' + confirmedF + 'f, ' + confirmedM + 'm)';
+                                        const unconfText = unconfirmedAttendees + ' (' + unconfirmedF + 'f, ' + unconfirmedM + 'm)';
+                                        attendeesCountEl.innerHTML = '<span style="color:#10b981;">Confirmed Attendees: ' + confText + '</span>' +
+                                            ' &nbsp;|&nbsp; <span style="color:#f59e0b;">Unconfirmed Attendees: ' + unconfText + '</span>';
+                                    }
                                 } else {
                                     countEl.innerText = 'Total Records: ' + data.length;
+                                    if (attendeesCountEl) attendeesCountEl.style.display = 'none';
+                                }
+
+                                if (deptCountEl) {
+                                    const deptKeys = Object.keys(deptStats).sort((a,b) => deptStats[b] - deptStats[a]);
+                                    if (deptKeys.length > 0) {
+                                        deptCountEl.style.display = 'inline-block';
+                                        const deptHtml = deptKeys.map(k => '<strong>' + k + ':</strong> ' + deptStats[k]).join(' &nbsp;|&nbsp; ');
+                                        deptCountEl.innerHTML = '<span style="color:#a78bfa;">' + deptHtml + '</span>';
+                                    } else {
+                                        deptCountEl.style.display = 'none';
+                                    }
                                 }
                             }
                             
