@@ -362,9 +362,16 @@ const server = http.createServer(async (req, res) => {
                     </div>
                     
                     <div class="stat-card" id="chartCard" style="display:none; flex-direction:column; min-width: 0; overflow: hidden; width: 100%; box-sizing: border-box; margin-bottom: 24px;">
-                        <div class="stat-title">
-                            <svg style="width:14px; height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                            Daily Registrations
+                        <div class="stat-title" style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <svg style="width:14px; height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                                Daily Registrations
+                            </div>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <input type="date" id="chartStartDate" style="width:130px; padding:6px; font-size:12px; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-glass); border-radius:6px;" onchange="renderChartFromStats()" />
+                                <span style="color:var(--text-secondary); font-size:12px;">to</span>
+                                <input type="date" id="chartEndDate" style="width:130px; padding:6px; font-size:12px; background:rgba(255,255,255,0.05); color:#fff; border:1px solid var(--border-glass); border-radius:6px;" onchange="renderChartFromStats()" />
+                            </div>
                         </div>
                         <div class="stat-content" style="height: 300px; width: 100%; position: relative; overflow-x: auto;">
                             <div id="chartWrapper" style="height: 100%; min-width: 100%;">
@@ -449,6 +456,7 @@ const server = http.createServer(async (req, res) => {
                 <script>
                     let currentColumns = []; // Store the schema so we can build the form
                     let lastFetchedData = []; // Store fetched data
+                    let lastFetchedDailyStats = {};
                     let currentRandomMs = 0;
                     let currentCropper = null;
                     let currentEditDocId = null;
@@ -742,81 +750,8 @@ const server = http.createServer(async (req, res) => {
                                     }
                                 }
                                 
-                                const chartCard = document.getElementById('chartCard');
-                                if (chartCard) {
-                                    if (Object.keys(dailyStats).length > 0) {
-                                        chartCard.style.display = 'flex';
-                                        const labels = [];
-                                        const dataAccepted = [];
-                                        const dataPending = [];
-                                        const dataRejected = [];
-                                        
-                                        const targetEnd = new Date(new Date().getFullYear(), 6, 20); // July 20
-                                        let maxDate = targetEnd;
-                                        
-                                        const statKeys = Object.keys(dailyStats).sort();
-                                        if (statKeys.length > 0) {
-                                            const lastKeyDate = new Date(statKeys[statKeys.length - 1]);
-                                            if (lastKeyDate > maxDate) maxDate = lastKeyDate;
-                                        }
-
-                                        let curr = new Date(new Date().getFullYear(), 5, 25);
-                                        
-                                        while (curr <= maxDate) {
-                                            const y = curr.getFullYear();
-                                            const m = String(curr.getMonth() + 1).padStart(2, '0');
-                                            const day = String(curr.getDate()).padStart(2, '0');
-                                            const dateKey = y + '-' + m + '-' + day;
-                                            
-                                            labels.push(curr.toLocaleString('en-US', { month: 'short', day: 'numeric' }));
-                                            
-                                            const stats = dailyStats[dateKey] || { accepted: 0, pending: 0, rejected: 0 };
-                                            dataAccepted.push(stats.accepted);
-                                            dataPending.push(stats.pending);
-                                            dataRejected.push(stats.rejected);
-                                            
-                                            curr.setDate(curr.getDate() + 1);
-                                            if (labels.length > 365) break;
-                                        }
-                                        
-                                        const chartWrapper = document.getElementById('chartWrapper');
-                                        const chartCardEl = document.getElementById('chartCard');
-                                        if (chartWrapper && chartCardEl) {
-                                            const dynamicWidth = Math.max(labels.length * 50, chartCardEl.clientWidth - 40);
-                                            chartWrapper.style.width = dynamicWidth + 'px';
-                                        }
-
-                                        const ctx = document.getElementById('registrationsChart');
-                                        if (currentChart) {
-                                            currentChart.destroy();
-                                        }
-                                        
-                                        currentChart = new Chart(ctx, {
-                                            type: 'bar',
-                                            data: {
-                                                labels: labels,
-                                                datasets: [
-                                                    { label: 'Accepted', data: dataAccepted, backgroundColor: '#10b981', stack: 'Stack 0', borderRadius: 4, maxBarThickness: 24 },
-                                                    { label: 'Pending', data: dataPending, backgroundColor: '#eab308', stack: 'Stack 0', borderRadius: 4, maxBarThickness: 24 },
-                                                    { label: 'Rejected', data: dataRejected, backgroundColor: '#ef4444', stack: 'Stack 0', borderRadius: 4, maxBarThickness: 24 }
-                                                ]
-                                            },
-                                            options: {
-                                                responsive: true,
-                                                maintainAspectRatio: false,
-                                                plugins: {
-                                                    legend: { labels: { color: '#e2e8f0', font: { family: 'Inter' } } }
-                                                },
-                                                scales: {
-                                                    x: { stacked: true, ticks: { color: '#94a3b8', font: { family: 'Inter' } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                                                    y: { stacked: true, ticks: { color: '#94a3b8', stepSize: 1, font: { family: 'Inter' } }, grid: { color: 'rgba(255,255,255,0.05)' } }
-                                                }
-                                            }
-                                        });
-                                    } else {
-                                        chartCard.style.display = 'none';
-                                    }
-                                }
+                                lastFetchedDailyStats = dailyStats;
+                                renderChartFromStats();
                                 
                                 // Render table logic continues here
                             }
@@ -980,12 +915,116 @@ const server = http.createServer(async (req, res) => {
                                 }
                                 html += '<td>' + displayVal + '</td>';
                             });
-                            html += '<td style="text-align:right;"><div style="display:inline-flex; gap:8px; justify-content:flex-end;"><button class="action-btn edit" onclick="openCreateModal(\\'' + item._docId + '\\')">Edit</button><button class="action-btn delete" onclick="deleteRecord(\\'' + item._docId + '\\')">Delete</button></div></td>';
+                            let downloadProofBtn = '';
+                            if (item.paymentProof) {
+                                downloadProofBtn = '<button class="action-btn" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);" onclick="downloadImage(\\\'' + item.paymentProof + '\\\', \\\'payment_proof_' + item._docId + '\\\')">Download Proof</button>';
+                            }
+                            html += '<td style="text-align:right;"><div style="display:inline-flex; gap:8px; justify-content:flex-end;">' + downloadProofBtn + '<button class="action-btn edit" onclick="openCreateModal(\\\'' + item._docId + '\\\')">Edit</button><button class="action-btn delete" onclick="deleteRecord(\\\'' + item._docId + '\\\')">Delete</button></div></td>';
                             html += '</tr>';
                         });
 
                         html += '</tbody></table>';
                         container.innerHTML = html;
+                    }
+
+                    function downloadImage(dataUrl, filename) {
+                        const a = document.createElement('a');
+                        a.href = dataUrl;
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    }
+
+                    function renderChartFromStats() {
+                        const chartCard = document.getElementById('chartCard');
+                        if (!chartCard) return;
+                        const dailyStats = lastFetchedDailyStats;
+                        
+                        if (Object.keys(dailyStats).length > 0) {
+                            chartCard.style.display = 'flex';
+                            const labels = [];
+                            const dataAccepted = [];
+                            const dataPending = [];
+                            const dataRejected = [];
+                            
+                            const statKeys = Object.keys(dailyStats).sort();
+                            
+                            let startD = new Date(new Date().getFullYear(), 5, 25);
+                            let maxDate = new Date(new Date().getFullYear(), 6, 20);
+                            
+                            if (statKeys.length > 0) {
+                                const lastKeyDate = new Date(statKeys[statKeys.length - 1]);
+                                if (lastKeyDate > maxDate) maxDate = lastKeyDate;
+                            }
+
+                            const startDateInput = document.getElementById('chartStartDate').value;
+                            if (startDateInput) {
+                                const parts = startDateInput.split('-');
+                                startD = new Date(parts[0], parts[1] - 1, parts[2]);
+                            }
+                            const endDateInput = document.getElementById('chartEndDate').value;
+                            if (endDateInput) {
+                                const parts = endDateInput.split('-');
+                                maxDate = new Date(parts[0], parts[1] - 1, parts[2]);
+                            }
+
+                            let curr = new Date(startD);
+                            
+                            while (curr <= maxDate) {
+                                const y = curr.getFullYear();
+                                const m = String(curr.getMonth() + 1).padStart(2, '0');
+                                const day = String(curr.getDate()).padStart(2, '0');
+                                const dateKey = y + '-' + m + '-' + day;
+                                
+                                labels.push(curr.toLocaleString('en-US', { month: 'short', day: 'numeric' }));
+                                
+                                const stats = dailyStats[dateKey] || { accepted: 0, pending: 0, rejected: 0 };
+                                dataAccepted.push(stats.accepted);
+                                dataPending.push(stats.pending);
+                                dataRejected.push(stats.rejected);
+                                
+                                curr.setDate(curr.getDate() + 1);
+                                if (labels.length > 365) break;
+                            }
+                            
+                            const chartWrapper = document.getElementById('chartWrapper');
+                            const chartCardEl = document.getElementById('chartCard');
+                            if (chartWrapper && chartCardEl) {
+                                const dynamicWidth = Math.max(labels.length * 50, chartCardEl.clientWidth - 40);
+                                chartWrapper.style.width = dynamicWidth + 'px';
+                            }
+
+                            const ctx = document.getElementById('registrationsChart');
+                            if (currentChart) {
+                                currentChart.destroy();
+                            }
+                            
+                            currentChart = new Chart(ctx, {
+                                type: 'bar',
+                                data: {
+                                    labels: labels,
+                                    datasets: [
+                                        { label: 'Accepted', data: dataAccepted, backgroundColor: '#10b981', stack: 'Stack 0', borderRadius: 4, maxBarThickness: 24 },
+                                        { label: 'Pending', data: dataPending, backgroundColor: '#eab308', stack: 'Stack 0', borderRadius: 4, maxBarThickness: 24 },
+                                        { label: 'Rejected', data: dataRejected, backgroundColor: '#ef4444', stack: 'Stack 0', borderRadius: 4, maxBarThickness: 24 }
+                                    ]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: { labels: { color: '#e2e8f0', font: { family: 'Inter' } } }
+                                    },
+                                    scales: {
+                                        x: { stacked: true, ticks: { color: '#94a3b8', font: { family: 'Inter' } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                        y: { stacked: true, ticks: { color: '#94a3b8', stepSize: 1, font: { family: 'Inter' } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                                    }
+                                }
+                            });
+                        } else {
+                            chartCard.style.display = 'none';
+                        }
                     }
 
                     // ====== MODAL & INSERT LOGIC ======
