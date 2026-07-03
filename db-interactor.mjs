@@ -358,9 +358,15 @@ const server = http.createServer(async (req, res) => {
                             <div id="attendeesCount" class="stat-content"></div>
                         </div>
                         <div class="stat-card" id="deptCard" style="display:none;">
-                            <div class="stat-title">
-                                <svg style="width:14px; height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                                Top Departments
+                            <div class="stat-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <svg style="width:14px; height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                                    Top Departments
+                                </div>
+                                <div style="display:flex; gap:12px; align-items:center; font-size:11px; text-transform:none; letter-spacing:0; font-weight:normal;">
+                                    <label style="cursor:pointer; display:flex; align-items:center; gap:4px; color:var(--text-secondary);"><input type="checkbox" id="deptToggleUnconfirmed" onchange="renderDeptStats()" style="width:12px; height:12px; margin:0;"> Unconfirmed</label>
+                                    <label style="cursor:pointer; display:flex; align-items:center; gap:4px; color:var(--text-secondary);"><input type="checkbox" id="deptToggleBatch" onchange="renderDeptStats()" style="width:12px; height:12px; margin:0;"> Batch Info</label>
+                                </div>
                             </div>
                             <div id="deptCount" class="stat-content"></div>
                         </div>
@@ -694,25 +700,7 @@ const server = http.createServer(async (req, res) => {
                                         }
                                     }
 
-                                    if ((s === 'approved' || s === 'accepted') && Array.isArray(item.attendees)) {
-                                        item.attendees.forEach(attendee => {
-                                            if (attendee && attendee.program) {
-                                                let rawProg = String(attendee.program).toLowerCase().replace(/[^a-z0-9]/g, '');
-                                                let prog = String(attendee.program).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-                                                
-                                                if (rawProg.includes('software') || rawProg.includes('softeng') || rawProg === 'bsse' || rawProg === 'se') prog = 'BSSE';
-                                                else if (rawProg.includes('computer') || rawProg.includes('compsci') || rawProg === 'bscs' || rawProg === 'cs') prog = 'BSCS';
-                                                else if (rawProg.includes('information') || rawProg.includes('infotech') || rawProg === 'bsit' || rawProg === 'it') prog = 'BSIT';
-                                                else if (rawProg.includes('artificial') || rawProg === 'bsai' || rawProg === 'ai') prog = 'BSAI';
-                                                else if (rawProg.includes('cyber') || rawProg === 'bscys' || rawProg === 'cys') prog = 'BSCYS';
-                                                else if (rawProg.includes('data') || rawProg === 'bsds' || rawProg === 'ds') prog = 'BSDS';
-                                                
-                                                if (prog) {
-                                                    deptStats[prog] = (deptStats[prog] || 0) + 1;
-                                                }
-                                            }
-                                        });
-                                    }
+                                    // Department stats are now calculated dynamically in renderDeptStats()
                                 });
                                 
                                 const attendeesCountEl = document.getElementById('attendeesCount');
@@ -755,20 +743,7 @@ const server = http.createServer(async (req, res) => {
                                     if (attendeesCard) attendeesCard.style.display = 'none';
                                 }
 
-                                if (deptCountEl && deptCard) {
-                                    const deptKeys = Object.keys(deptStats).sort((a,b) => deptStats[b] - deptStats[a]);
-                                    if (deptKeys.length > 0) {
-                                        deptCard.style.display = 'flex';
-                                        const topKeys = deptKeys.slice(0, 5); // Limit to top 5 for clean UI
-                                        const deptHtml = topKeys.map(k => '<div class="stat-item"><span class="stat-label">' + k + '</span> <span class="stat-value highlight-purple">' + deptStats[k] + '</span></div>').join('');
-                                        const otherKeys = deptKeys.slice(5);
-                                        const othersHtml = otherKeys.length > 0 ? '<div class="stat-item"><span class="stat-label">Others</span> <span class="stat-value highlight-blue">' + otherKeys.reduce((acc, k) => acc + deptStats[k], 0) + '</span></div>' : '';
-                                        
-                                        deptCountEl.innerHTML = deptHtml + othersHtml;
-                                    } else {
-                                        deptCard.style.display = 'none';
-                                    }
-                                }
+                                // Department card rendering is handled by renderDeptStats()
                                 
                                 lastFetchedDailyStats = dailyStats;
                                 renderChartFromStats();
@@ -777,6 +752,7 @@ const server = http.createServer(async (req, res) => {
                             }
                             
                             lastFetchedData = data;
+                            renderDeptStats();
                             const createBtn = document.getElementById('createBtn');
                             if (createBtn) {
                                 createBtn.disabled = !isSynced;
@@ -867,6 +843,102 @@ const server = http.createServer(async (req, res) => {
                             }
                         } else {
                             msg.style.display = 'block';
+                        }
+                    }
+
+                    function renderDeptStats() {
+                        const deptCard = document.getElementById('deptCard');
+                        const deptCountEl = document.getElementById('deptCount');
+                        if (!deptCard || !deptCountEl) return;
+                        
+                        const includePending = document.getElementById('deptToggleUnconfirmed')?.checked;
+                        const showBatch = document.getElementById('deptToggleBatch')?.checked;
+                        
+                        let computedDeptStats = {};
+                        
+                        let hasData = false;
+                        lastFetchedData.forEach(item => {
+                            const s = (item.status || '').toLowerCase();
+                            const isApproved = (s === 'approved' || s === 'accepted');
+                            const isPending = (s === 'pending');
+                            
+                            if (isApproved || (includePending && isPending)) {
+                                if (Array.isArray(item.attendees)) {
+                                    item.attendees.forEach(attendee => {
+                                        if (attendee && attendee.program) {
+                                            hasData = true;
+                                            let rawProg = String(attendee.program).toLowerCase().replace(/[^a-z0-9]/g, '');
+                                            let prog = String(attendee.program).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                                            
+                                            if (rawProg.includes('software') || rawProg.includes('softeng') || rawProg === 'bsse' || rawProg === 'se') prog = 'BSSE';
+                                            else if (rawProg.includes('computer') || rawProg.includes('compsci') || rawProg === 'bscs' || rawProg === 'cs') prog = 'BSCS';
+                                            else if (rawProg.includes('information') || rawProg.includes('infotech') || rawProg === 'bsit' || rawProg === 'it') prog = 'BSIT';
+                                            else if (rawProg.includes('artificial') || rawProg === 'bsai' || rawProg === 'ai') prog = 'BSAI';
+                                            else if (rawProg.includes('cyber') || rawProg === 'bscys' || rawProg === 'cys') prog = 'BSCYS';
+                                            else if (rawProg.includes('data') || rawProg === 'bsds' || rawProg === 'ds') prog = 'BSDS';
+                                            else if (rawProg.includes('business') || rawProg === 'bba') prog = 'BBA';
+                                            else if (rawProg.includes('accounting') || rawProg.includes('finance') || rawProg === 'bsaf' || rawProg === 'af') prog = 'BSAF';
+                                            else if (rawProg.includes('psychology') || rawProg === 'bspsy' || rawProg === 'psy') prog = 'BSPSY';
+                                            else if (rawProg.includes('english') || rawProg === 'bsenglish' || rawProg === 'eng') prog = 'BSENG';
+                                            
+                                            if (prog) {
+                                                if (!computedDeptStats[prog]) computedDeptStats[prog] = { total: 0, batches: {} };
+                                                computedDeptStats[prog].total++;
+                                                
+                                                let batch = attendee.batch ? String(attendee.batch).toLowerCase().trim() : 'unknown';
+                                                
+                                                // Handle student IDs (e.g. F2022408084) or standard batches (Fall 22)
+                                                let prefix = batch.substring(0, 15);
+                                                let tMatch = prefix.match(/(f|s|fall|spring)/);
+                                                let yMatch = prefix.match(/20(\\d{2})/) || prefix.match(/(\\d{2})/);
+                                                
+                                                let shortBatch = batch;
+                                                if (tMatch && yMatch) {
+                                                    let term = tMatch[1].charAt(0);
+                                                    let yr = yMatch[1];
+                                                    shortBatch = term + ' ' + yr; // strictly generates "f 22" or "s 23"
+                                                } else {
+                                                    shortBatch = shortBatch.length > 8 ? shortBatch.substring(0, 8) : shortBatch;
+                                                }
+                                                // console.log("Batch Debug -> Original:", attendee.batch, "Parsed:", shortBatch);
+                                                
+                                                computedDeptStats[prog].batches[shortBatch] = (computedDeptStats[prog].batches[shortBatch] || 0) + 1;
+                                            }
+                                        }
+                                    });
+                                }
+                            }
+                        });
+
+                        if (!hasData || Object.keys(computedDeptStats).length === 0) {
+                            deptCard.style.display = 'none';
+                            return;
+                        }
+                        
+                        const deptKeys = Object.keys(computedDeptStats).sort((a,b) => computedDeptStats[b].total - computedDeptStats[a].total);
+                        if (deptKeys.length > 0) {
+                            deptCard.style.display = 'flex';
+                            const topKeys = deptKeys.slice(0, 5);
+                            const deptHtml = topKeys.map(k => {
+                                let label = k;
+                                if (showBatch) {
+                                    let bKeys = Object.keys(computedDeptStats[k].batches).sort((a,b) => computedDeptStats[k].batches[b] - computedDeptStats[k].batches[a]);
+                                    let bStrs = bKeys.map(bk => computedDeptStats[k].batches[bk] + bk);
+                                    label += ' <span style="font-size:11px; color:var(--text-secondary); font-weight:normal;">(' + bStrs.join(', ') + ')</span>';
+                                }
+                                return '<div class="stat-item"><span class="stat-label">' + label + '</span> <span class="stat-value highlight-purple">' + computedDeptStats[k].total + '</span></div>';
+                            }).join('');
+                            
+                            const otherKeys = deptKeys.slice(5);
+                            let othersHtml = '';
+                            if (otherKeys.length > 0) {
+                                let otherTotal = otherKeys.reduce((acc, k) => acc + computedDeptStats[k].total, 0);
+                                othersHtml = '<div class="stat-item"><span class="stat-label">Others</span> <span class="stat-value highlight-blue">' + otherTotal + '</span></div>';
+                            }
+                            
+                            deptCountEl.innerHTML = deptHtml + othersHtml;
+                        } else {
+                            deptCard.style.display = 'none';
                         }
                     }
 
