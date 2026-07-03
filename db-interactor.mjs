@@ -686,7 +686,16 @@ const server = http.createServer(async (req, res) => {
                                     if ((s === 'approved' || s === 'accepted') && Array.isArray(item.attendees)) {
                                         item.attendees.forEach(attendee => {
                                             if (attendee && attendee.program) {
-                                                const prog = String(attendee.program).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                                                let rawProg = String(attendee.program).toLowerCase().replace(/[^a-z0-9]/g, '');
+                                                let prog = String(attendee.program).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                                                
+                                                if (rawProg.includes('software') || rawProg.includes('softeng') || rawProg === 'bsse' || rawProg === 'se') prog = 'BSSE';
+                                                else if (rawProg.includes('computer') || rawProg.includes('compsci') || rawProg === 'bscs' || rawProg === 'cs') prog = 'BSCS';
+                                                else if (rawProg.includes('information') || rawProg.includes('infotech') || rawProg === 'bsit' || rawProg === 'it') prog = 'BSIT';
+                                                else if (rawProg.includes('artificial') || rawProg === 'bsai' || rawProg === 'ai') prog = 'BSAI';
+                                                else if (rawProg.includes('cyber') || rawProg === 'bscys' || rawProg === 'cys') prog = 'BSCYS';
+                                                else if (rawProg.includes('data') || rawProg === 'bsds' || rawProg === 'ds') prog = 'BSDS';
+                                                
                                                 if (prog) {
                                                     deptStats[prog] = (deptStats[prog] || 0) + 1;
                                                 }
