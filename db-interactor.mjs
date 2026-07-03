@@ -1502,6 +1502,18 @@ const server = http.createServer(async (req, res) => {
                     document.getElementById('collectionInput').addEventListener('keypress', function (e) {
                         if (e.key === 'Enter') fetchData();
                     });
+                    
+                    // Auto-sync periodically every 300 seconds in the background
+                    setInterval(() => {
+                        if (document.getElementById('collectionInput').value.trim()) {
+                            // Only fetch if a collection is selected and no modal is open (to avoid disrupting active edits)
+                            const modal1 = document.getElementById('createModal');
+                            const modal2 = document.getElementById('downloadModal');
+                            if ((!modal1 || modal1.style.display !== 'flex') && (!modal2 || modal2.style.display !== 'flex')) {
+                                fetchData();
+                            }
+                        }
+                    }, 300000);
                 </script>
             </body>
             </html>
