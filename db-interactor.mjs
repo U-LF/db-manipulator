@@ -1,11 +1,16 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { firebaseConfig } from './firebase-config.js';
 import http from 'http';
+import fs from 'fs';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+const liveDataCache = {};
+const activeListeners = {};
+const cacheReady = {};
 
 const server = http.createServer(async (req, res) => {
     // Basic CORS for local testing
@@ -604,9 +609,15 @@ const server = http.createServer(async (req, res) => {
                         if (!col) return;
                         
                         document.getElementById('loading').style.display = 'block';
+                        
+                        const createBtn = document.getElementById('createBtn');
+                        if (createBtn) createBtn.disabled = true;
+                        
                         try {
                             const response = await fetch('/api/data?collection=' + col);
-                            const data = await response.json();
+                            const json = await response.json();
+                            const data = Array.isArray(json) ? json : (json.data || []);
+                            const isSynced = Array.isArray(json) ? true : !!json.isSynced;
                             
                             // Sort data by createdAt (newest first) if available
                             data.sort((a, b) => {
@@ -768,19 +779,20 @@ const server = http.createServer(async (req, res) => {
                             lastFetchedData = data;
                             const createBtn = document.getElementById('createBtn');
                             if (createBtn) {
-                                createBtn.disabled = false;
-                                createBtn.style.opacity = '1';
-                                createBtn.style.cursor = 'pointer';
+                                createBtn.disabled = !isSynced;
+                                createBtn.title = isSynced ? "" : "Waiting for background sync to complete...";
+                                createBtn.style.opacity = '';
+                                createBtn.style.cursor = '';
                             }
                             
                             const downloadBtn = document.getElementById('downloadBtn');
                             if (downloadBtn) {
                                 downloadBtn.disabled = false;
-                                downloadBtn.style.opacity = '1';
-                                downloadBtn.style.cursor = 'pointer';
+                                downloadBtn.style.opacity = '';
+                                downloadBtn.style.cursor = '';
                             }
                             
-                            renderTable(data);
+                            renderTable(data, isSynced);
                         } catch (e) {
                             alert('Error fetching data: ' + e.message);
                             const countEl = document.getElementById('recordCount');
@@ -858,7 +870,7 @@ const server = http.createServer(async (req, res) => {
                         }
                     }
 
-                    function renderTable(data) {
+                    function renderTable(data, isSynced = true) {
                         const container = document.getElementById('tableContainer');
                         const searchContainer = document.getElementById('searchContainer');
                         
@@ -928,7 +940,8 @@ const server = http.createServer(async (req, res) => {
                             if (item.paymentProof) {
                                 downloadProofBtn = '<button class="action-btn" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);" onclick="downloadImage(\\\'' + item.paymentProof + '\\\', \\\'payment_proof_' + item._docId + '\\\')">Download Proof</button>';
                             }
-                            html += '<td style="text-align:right;"><div style="display:inline-flex; gap:8px; justify-content:flex-end;">' + downloadProofBtn + '<button class="action-btn edit" onclick="openCreateModal(\\\'' + item._docId + '\\\')">Edit</button><button class="action-btn delete" onclick="deleteRecord(\\\'' + item._docId + '\\\')">Delete</button></div></td>';
+                            const disabledAttr = isSynced ? '' : ' disabled title="Waiting for background sync to complete..."';
+                            html += '<td style="text-align:right;"><div style="display:inline-flex; gap:8px; justify-content:flex-end;">' + downloadProofBtn + '<button class="action-btn edit"' + disabledAttr + ' onclick="openCreateModal(\\\'' + item._docId + '\\\')">Edit</button><button class="action-btn delete"' + disabledAttr + ' onclick="deleteRecord(\\\'' + item._docId + '\\\')">Delete</button></div></td>';
                             html += '</tr>';
                         });
 
@@ -1499,13 +1512,49 @@ const server = http.createServer(async (req, res) => {
             const colName = url.searchParams.get('collection');
             if (!colName) throw new Error('Collection name required');
             
-            const querySnapshot = await getDocs(collection(db, colName));
-            const data = [];
-            querySnapshot.forEach((doc) => {
-                data.push({ _docId: doc.id, ...doc.data() });
-            });
+            const cacheFile = `./local_db_cache_${colName}.json`;
+            
+            if (!activeListeners[colName]) {
+                activeListeners[colName] = true;
+                
+                let loadedFromFile = false;
+                if (fs.existsSync(cacheFile)) {
+                    try {
+                        liveDataCache[colName] = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+                        cacheReady[colName] = Promise.resolve();
+                        loadedFromFile = true;
+                    } catch (e) {
+                        console.error('Error reading cache file', e);
+                    }
+                }
+
+                let resolveCacheReady;
+                if (!loadedFromFile) {
+                    cacheReady[colName] = new Promise(resolve => resolveCacheReady = resolve);
+                }
+
+                onSnapshot(collection(db, colName), (querySnapshot) => {
+                    const data = [];
+                    querySnapshot.forEach((doc) => {
+                        data.push({ _docId: doc.id, ...doc.data() });
+                    });
+                    liveDataCache[colName] = data;
+                    
+                    fs.writeFile(cacheFile, JSON.stringify(data), (err) => {
+                        if (err) console.error('Failed to write cache file', err);
+                    });
+
+                    if (resolveCacheReady) {
+                        resolveCacheReady();
+                        resolveCacheReady = null;
+                    }
+                });
+            }
+
+            await cacheReady[colName];
+            
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(data));
+            res.end(JSON.stringify(liveDataCache[colName]));
         } catch (error) {
             res.writeHead(500);
             res.end(JSON.stringify({ error: error.message }));
