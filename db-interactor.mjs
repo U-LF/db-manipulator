@@ -870,16 +870,12 @@ const server = http.createServer(async (req, res) => {
                                             let rawProg = String(attendee.program).toLowerCase().replace(/[^a-z0-9]/g, '');
                                             let prog = String(attendee.program).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
                                             
-                                            if (rawProg.includes('software') || rawProg.includes('softeng') || rawProg === 'bsse' || rawProg === 'se') prog = 'BSSE';
-                                            else if (rawProg.includes('computer') || rawProg.includes('compsci') || rawProg === 'bscs' || rawProg === 'cs') prog = 'BSCS';
-                                            else if (rawProg.includes('information') || rawProg.includes('infotech') || rawProg === 'bsit' || rawProg === 'it') prog = 'BSIT';
-                                            else if (rawProg.includes('artificial') || rawProg === 'bsai' || rawProg === 'ai') prog = 'BSAI';
-                                            else if (rawProg.includes('cyber') || rawProg === 'bscys' || rawProg === 'cys') prog = 'BSCYS';
-                                            else if (rawProg.includes('data') || rawProg === 'bsds' || rawProg === 'ds') prog = 'BSDS';
-                                            else if (rawProg.includes('business') || rawProg === 'bba') prog = 'BBA';
-                                            else if (rawProg.includes('accounting') || rawProg.includes('finance') || rawProg === 'bsaf' || rawProg === 'af') prog = 'BSAF';
-                                            else if (rawProg.includes('psychology') || rawProg === 'bspsy' || rawProg === 'psy') prog = 'BSPSY';
-                                            else if (rawProg.includes('english') || rawProg === 'bsenglish' || rawProg === 'eng') prog = 'BSENG';
+                                            if (rawProg.includes('software') || rawProg.includes('softeng') || rawProg.includes('bsse') || rawProg === 'se') prog = 'BSSE';
+                                            else if (rawProg.includes('computer') || rawProg.includes('compsci') || rawProg.includes('bscs') || rawProg === 'cs') prog = 'BSCS';
+                                            else if (rawProg.includes('information') || rawProg.includes('infotech') || rawProg.includes('bsit') || rawProg === 'it') prog = 'BSIT';
+                                            else if (rawProg.includes('artificial') || rawProg.includes('bsai') || rawProg === 'ai') prog = 'BSAI';
+                                            else if (rawProg.includes('cyber') || rawProg.includes('cys') || rawProg.includes('cysec')) prog = 'BSCYS';
+                                            else if (rawProg.includes('data') || rawProg.includes('ds') && (rawProg.includes('bs') || rawProg.length <= 5)) prog = 'BSDS'; // catch bsds, bscds, ds
                                             
                                             if (prog) {
                                                 if (!computedDeptStats[prog]) computedDeptStats[prog] = { total: 0, batches: {} };
@@ -933,7 +929,16 @@ const server = http.createServer(async (req, res) => {
                             let othersHtml = '';
                             if (otherKeys.length > 0) {
                                 let otherTotal = otherKeys.reduce((acc, k) => acc + computedDeptStats[k].total, 0);
-                                othersHtml = '<div class="stat-item"><span class="stat-label">Others</span> <span class="stat-value highlight-blue">' + otherTotal + '</span></div>';
+                                let otherNames = otherKeys.map(k => {
+                                    let label = k + ' (' + computedDeptStats[k].total + ')';
+                                    if (showBatch && Object.keys(computedDeptStats[k].batches).length > 0) {
+                                        let bKeys = Object.keys(computedDeptStats[k].batches).sort((a,b) => computedDeptStats[k].batches[b] - computedDeptStats[k].batches[a]);
+                                        let bStrs = bKeys.map(bk => computedDeptStats[k].batches[bk] + bk);
+                                        label += ' [' + bStrs.join(', ') + ']';
+                                    }
+                                    return label;
+                                }).join('&#10;');
+                                othersHtml = '<div class="stat-item" title="' + otherNames + '" style="cursor:help;"><span class="stat-label">Others</span> <span class="stat-value highlight-blue">' + otherTotal + '</span></div>';
                             }
                             
                             deptCountEl.innerHTML = deptHtml + othersHtml;
