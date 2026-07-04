@@ -12,6 +12,6 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "firebase": "^12.15.0"
+    "@supabase/supabase-js": "^2.110.0"
   }
 }

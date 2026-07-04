@@ -1,16 +1,28 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { firebaseConfig } from './firebase-config.js';
+import { createClient } from '@supabase/supabase-js';
+import { SUPABASE_CONFIG } from './config.js';
 import http from 'http';
-import fs from 'fs';
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// Initialize Supabase (Use serviceRoleKey for admin bypass if available, else anonKey)
+const supabaseKey = SUPABASE_CONFIG.serviceRoleKey || SUPABASE_CONFIG.anonKey;
+const supabase = createClient(SUPABASE_CONFIG.url, supabaseKey);
 
-const liveDataCache = {};
-const activeListeners = {};
-const cacheReady = {};
+async function handleBase64Upload(base64Str) {
+    if (typeof base64Str !== 'string' || !base64Str.startsWith('data:image')) return base64Str;
+    try {
+        const matches = base64Str.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/);
+        if (!matches || matches.length !== 3) return base64Str;
+        const extension = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+        const buffer = Buffer.from(matches[2], 'base64');
+        const fileName = `receipt_admin_${Date.now()}.${extension}`;
+        const { error } = await supabase.storage.from('payment-proofs').upload(fileName, buffer, { contentType: `image/${extension}` });
+        if (error) throw error;
+        const { data: urlData } = supabase.storage.from('payment-proofs').getPublicUrl(fileName);
+        return urlData.publicUrl;
+    } catch (e) {
+        console.error('Base64 upload failed:', e);
+        return base64Str;
+    }
+}
 
 const server = http.createServer(async (req, res) => {
     // Basic CORS for local testing
@@ -529,9 +541,7 @@ const server = http.createServer(async (req, res) => {
                             const arr = headers.map(header => {
                                 let val = record[header];
                                 if (val === null || val === undefined) return '';
-                                if (typeof val === 'string' && val.startsWith('data:image')) {
-                                    return ''; // Leave empty, will draw in didDrawCell
-                                }
+
                                 if (typeof val === 'object') {
                                     if (Array.isArray(val)) {
                                         return val.map((item, idx) => {
@@ -627,8 +637,8 @@ const server = http.createServer(async (req, res) => {
                             
                             // Sort data by createdAt (newest first) if available
                             data.sort((a, b) => {
-                                const tA = (a.createdAt && a.createdAt.seconds) ? a.createdAt.seconds : 0;
-                                const tB = (b.createdAt && b.createdAt.seconds) ? b.createdAt.seconds : 0;
+                                const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                                const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
                                 return tB - tA;
                             });
                             
@@ -683,8 +693,8 @@ const server = http.createServer(async (req, res) => {
                                         }
                                     }
 
-                                    if (item.createdAt && item.createdAt.seconds) {
-                                        const d = new Date(item.createdAt.seconds * 1000);
+                                    if (item.createdAt) {
+                                        const d = new Date(item.createdAt);
                                         const year = new Date().getFullYear();
                                         if (!(d.getMonth() < 5 || (d.getMonth() === 5 && d.getDate() < 25))) {
                                             const y = d.getFullYear();
@@ -997,7 +1007,7 @@ const server = http.createServer(async (req, res) => {
                                 } else if (col === 'id') {
                                     displayVal = '<span style="font-family: monospace; color: #60a5fa; font-size: 14px; font-weight: bold; white-space: nowrap;">' + val + '</span>' +
                                                  '<br><span style="font-size: 10px; color: #475569;">(DB: ' + item._docId + ')</span>';
-                                } else if (col === 'paymentProof' || (typeof val === 'string' && val.startsWith('data:image'))) {
+                                } else if (col === 'paymentProof' || (typeof val === 'string' && val.startsWith('http'))) {
                                     displayVal = \`<img src="\${val}" class="img-preview" onclick="event.stopPropagation(); showImage('\${val}')" title="Click to enlarge" />\`;
                                 } else if (col === 'attendees') {
                                     displayVal = renderAttendees(val);
@@ -1027,8 +1037,10 @@ const server = http.createServer(async (req, res) => {
                     }
 
                     function downloadImage(dataUrl, filename) {
+                        const isUrl = dataUrl.startsWith('http');
+                        const finalUrl = isUrl ? (dataUrl + '?download=' + encodeURIComponent(filename)) : dataUrl;
                         const a = document.createElement('a');
-                        a.href = dataUrl;
+                        a.href = finalUrl;
                         a.download = filename;
                         document.body.appendChild(a);
                         a.click();
@@ -1183,7 +1195,7 @@ const server = http.createServer(async (req, res) => {
                                     html += '<select id="input_paymentProof_select" style="margin-bottom:12px; width: 100%;">';
                                     html += '<option value="">-- Upload New Image --</option>';
                                     lastFetchedData.forEach(item => {
-                                        if (item.paymentProof && item.paymentProof.startsWith('data:image')) {
+                                        if (item.paymentProof && item.paymentProof.startsWith('http')) {
                                             html += '<option value="' + item.paymentProof + '">' + item.id + ' (Existing Proof)</option>';
                                         }
                                     });
@@ -1221,9 +1233,11 @@ const server = http.createServer(async (req, res) => {
                                     if (el) {
                                         let val = itemToEdit[col];
                                         if (col === 'createdAt' && val) {
-                                            const d = new Date(val.seconds * 1000 + (val.nanoseconds ? val.nanoseconds / 1000000 : 0));
-                                            d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-                                            el.value = d.toISOString().slice(0, 19);
+                                            const d = new Date(val);
+                                            if (!isNaN(d.getTime())) {
+                                                d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+                                                el.value = d.toISOString().slice(0, 19);
+                                            }
                                         } else if (col === 'attendees') {
                                             el.value = JSON.stringify(val, null, 2);
                                         } else if (val !== undefined && val !== null) {
@@ -1241,29 +1255,14 @@ const server = http.createServer(async (req, res) => {
                         }
                         
                         function updateId() {
-                            if (createdAtInput && idInput && !isEdit) {
-                                const dateObj = new Date(createdAtInput.value);
-                                if (!isNaN(dateObj.getTime())) {
-                                    const timeWithMs = dateObj.getTime() + currentRandomMs;
-                                    idInput.value = 'SST-' + timeWithMs.toString().slice(-6);
-                                }
-                                
-                                const exists = lastFetchedData.some(item => item.id === idInput.value);
-                                if (exists) {
-                                    if (idError) idError.style.display = 'block';
-                                    if (insertBtn) {
-                                        insertBtn.disabled = true;
-                                        insertBtn.style.opacity = '0.5';
-                                        insertBtn.style.cursor = 'not-allowed';
-                                    }
-                                } else {
-                                    if (idError) idError.style.display = 'none';
-                                    if (insertBtn) {
-                                        insertBtn.disabled = false;
-                                        insertBtn.style.opacity = '1';
-                                        insertBtn.style.cursor = 'pointer';
-                                    }
-                                }
+                            if (idInput && !isEdit) {
+                                idInput.value = '(Auto-generated UUID)';
+                            }
+                            if (idError) idError.style.display = 'none';
+                            if (insertBtn) {
+                                insertBtn.disabled = false;
+                                insertBtn.style.opacity = '1';
+                                insertBtn.style.cursor = 'pointer';
                             }
                         }
                         
@@ -1469,7 +1468,7 @@ const server = http.createServer(async (req, res) => {
                         
                         if (isEdit) {
                             const itemToEdit = lastFetchedData.find(d => d._docId === currentEditDocId);
-                            if (itemToEdit && itemToEdit.paymentProof && typeof itemToEdit.paymentProof === 'string' && itemToEdit.paymentProof.startsWith('data:image')) {
+                            if (itemToEdit && itemToEdit.paymentProof && typeof itemToEdit.paymentProof === 'string' && itemToEdit.paymentProof.startsWith('http')) {
                                 updateProofPreview(itemToEdit.paymentProof);
                                 if (proofSelect) proofSelect.value = itemToEdit.paymentProof;
                             }
@@ -1601,49 +1600,34 @@ const server = http.createServer(async (req, res) => {
             const colName = url.searchParams.get('collection');
             if (!colName) throw new Error('Collection name required');
             
-            const cacheFile = `./local_db_cache_${colName}.json`;
-            
-            if (!activeListeners[colName]) {
-                activeListeners[colName] = true;
-                
-                let loadedFromFile = false;
-                if (fs.existsSync(cacheFile)) {
-                    try {
-                        liveDataCache[colName] = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
-                        cacheReady[colName] = Promise.resolve();
-                        loadedFromFile = true;
-                    } catch (e) {
-                        console.error('Error reading cache file', e);
-                    }
-                }
-
-                let resolveCacheReady;
-                if (!loadedFromFile) {
-                    cacheReady[colName] = new Promise(resolve => resolveCacheReady = resolve);
-                }
-
-                onSnapshot(collection(db, colName), (querySnapshot) => {
-                    const data = [];
-                    querySnapshot.forEach((doc) => {
-                        data.push({ _docId: doc.id, ...doc.data() });
-                    });
-                    liveDataCache[colName] = data;
-                    
-                    fs.writeFile(cacheFile, JSON.stringify(data), (err) => {
-                        if (err) console.error('Failed to write cache file', err);
-                    });
-
-                    if (resolveCacheReady) {
-                        resolveCacheReady();
-                        resolveCacheReady = null;
-                    }
-                });
+            let query = supabase.from(colName).select('*');
+            if (colName === 'registrations') {
+                query = supabase.from(colName).select('*, attendees(*)');
             }
-
-            await cacheReady[colName];
+            
+            const { data, error } = await query;
+            if (error) throw error;
+            
+            const mappedData = data.map(item => {
+                let mappedItem = { _docId: item.id, ...item };
+                if (colName === 'registrations') {
+                    mappedItem.ticketType = item.ticket_type;
+                    mappedItem.paymentProof = item.payment_proof_url;
+                    mappedItem.adminComment = item.admin_comment;
+                    mappedItem.createdAt = item.created_at;
+                    if (item.attendees) {
+                        mappedItem.attendees = item.attendees.map(a => ({
+                            ...a,
+                            studentId: a.student_id,
+                            emergencyContact: a.emergency_contact
+                        }));
+                    }
+                }
+                return mappedItem;
+            });
             
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(liveDataCache[colName]));
+            res.end(JSON.stringify(mappedData));
         } catch (error) {
             res.writeHead(500);
             res.end(JSON.stringify({ error: error.message }));
@@ -1658,19 +1642,47 @@ const server = http.createServer(async (req, res) => {
                 if (!colName) throw new Error('Collection name required');
                 
                 const payload = JSON.parse(body);
+                let dbPayload = { ...payload };
+                let attendees = [];
                 
-                // Convert createdAt string from datetime-local back into Firestore Timestamp
-                if (payload.createdAt) {
-                    const dateObj = new Date(payload.createdAt);
-                    payload.createdAt = {
-                        seconds: Math.floor(dateObj.getTime() / 1000),
-                        nanoseconds: (dateObj.getTime() % 1000) * 1000000
-                    };
+                if (colName === 'registrations') {
+                    dbPayload.ticket_type = payload.ticketType;
+                    dbPayload.payment_proof_url = await handleBase64Upload(payload.paymentProof);
+                    dbPayload.admin_comment = payload.adminComment;
+                    if (payload.createdAt) dbPayload.created_at = new Date(payload.createdAt).toISOString();
+                    
+                    delete dbPayload.ticketType;
+                    delete dbPayload.paymentProof;
+                    delete dbPayload.adminComment;
+                    delete dbPayload.createdAt;
+                    
+                    if (payload.attendees) {
+                        attendees = payload.attendees;
+                        delete dbPayload.attendees;
+                    }
                 }
                 
-                const docRef = await addDoc(collection(db, colName), payload);
+                const { data, error } = await supabase.from(colName).insert([dbPayload]).select().single();
+                if (error) throw error;
+                
+                if (colName === 'registrations' && attendees && attendees.length > 0) {
+                    const attendeesPayload = attendees.map(a => ({
+                        ...a,
+                        registration_id: data.id,
+                        student_id: a.studentId,
+                        emergency_contact: a.emergencyContact
+                    }));
+                    attendeesPayload.forEach(a => {
+                        delete a.studentId;
+                        delete a.emergencyContact;
+                        delete a._docId;
+                    });
+                    const { error: attendeeError } = await supabase.from('attendees').insert(attendeesPayload);
+                    if (attendeeError) throw attendeeError;
+                }
+                
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ id: docRef.id }));
+                res.end(JSON.stringify({ id: data.id }));
             } catch (error) {
                 res.writeHead(500);
                 res.end(error.message);
@@ -1687,16 +1699,48 @@ const server = http.createServer(async (req, res) => {
                 if (!colName || !id) throw new Error('Collection and ID required');
                 
                 const payload = JSON.parse(body);
+                let dbPayload = { ...payload };
+                let attendees = [];
                 
-                if (payload.createdAt) {
-                    const dateObj = new Date(payload.createdAt);
-                    payload.createdAt = {
-                        seconds: Math.floor(dateObj.getTime() / 1000),
-                        nanoseconds: (dateObj.getTime() % 1000) * 1000000
-                    };
+                if (colName === 'registrations') {
+                    if (payload.ticketType !== undefined) dbPayload.ticket_type = payload.ticketType;
+                    if (payload.paymentProof !== undefined) dbPayload.payment_proof_url = await handleBase64Upload(payload.paymentProof);
+                    if (payload.adminComment !== undefined) dbPayload.admin_comment = payload.adminComment;
+                    if (payload.createdAt) dbPayload.created_at = new Date(payload.createdAt).toISOString();
+                    
+                    delete dbPayload.ticketType;
+                    delete dbPayload.paymentProof;
+                    delete dbPayload.adminComment;
+                    delete dbPayload.createdAt;
+                    delete dbPayload._docId; 
+                    
+                    if (payload.attendees) {
+                        attendees = payload.attendees;
+                        delete dbPayload.attendees;
+                    }
                 }
                 
-                await updateDoc(doc(db, colName, id), payload);
+                const { error } = await supabase.from(colName).update(dbPayload).eq('id', id);
+                if (error) throw error;
+                
+                if (colName === 'registrations' && attendees && attendees.length > 0) {
+                    await supabase.from('attendees').delete().eq('registration_id', id);
+                    
+                    const attendeesPayload = attendees.map(a => ({
+                        ...a,
+                        registration_id: id,
+                        student_id: a.studentId || a.student_id,
+                        emergency_contact: a.emergencyContact || a.emergency_contact
+                    }));
+                    attendeesPayload.forEach(a => {
+                        delete a.studentId;
+                        delete a.emergencyContact;
+                        delete a._docId;
+                    });
+                    const { error: attendeeError } = await supabase.from('attendees').insert(attendeesPayload);
+                    if (attendeeError) throw attendeeError;
+                }
+                
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: true }));
             } catch (error) {
@@ -1711,7 +1755,13 @@ const server = http.createServer(async (req, res) => {
             const id = url.searchParams.get('id');
             if (!colName || !id) throw new Error('Collection and ID required');
             
-            await deleteDoc(doc(db, colName, id));
+            if (colName === 'registrations') {
+                await supabase.from('attendees').delete().eq('registration_id', id);
+            }
+            
+            const { error } = await supabase.from(colName).delete().eq('id', id);
+            if (error) throw error;
+            
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: true }));
         } catch (error) {
