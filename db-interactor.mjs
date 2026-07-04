@@ -1,6 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_CONFIG } from './config.js';
 import http from 'http';
+import fs from 'fs';
+
+const liveDataCache = {};
+const isSyncing = {};
+const activeListeners = {};
 
 // Initialize Supabase (Use serviceRoleKey for admin bypass if available, else anonKey)
 const supabaseKey = SUPABASE_CONFIG.serviceRoleKey || SUPABASE_CONFIG.anonKey;
@@ -1007,8 +1012,10 @@ const server = http.createServer(async (req, res) => {
                                 } else if (col === 'id') {
                                     displayVal = '<span style="font-family: monospace; color: #60a5fa; font-size: 14px; font-weight: bold; white-space: nowrap;">' + val + '</span>' +
                                                  '<br><span style="font-size: 10px; color: #475569;">(DB: ' + item._docId + ')</span>';
-                                } else if (col === 'paymentProof' || (typeof val === 'string' && val.startsWith('http'))) {
+                                } else if (col === 'paymentProof') {
                                     displayVal = \`<img src="\${val}" class="img-preview" onclick="event.stopPropagation(); showImage('\${val}')" title="Click to enlarge" />\`;
+                                } else if (typeof val === 'string' && val.startsWith('http')) {
+                                    displayVal = \`<a href="\${val}" target="_blank" style="color: #60a5fa; text-decoration: underline; word-break: break-all;">\${val}</a>\`;
                                 } else if (col === 'attendees') {
                                     displayVal = renderAttendees(val);
                                 } else if (formattedDate) {
@@ -1202,10 +1209,10 @@ const server = http.createServer(async (req, res) => {
                                     html += '</select>';
                                     html += '<input type="file" id="input_paymentProof_file" accept="image/*" />';
                                     html += '<div id="paymentProof_preview_container" style="display:none; margin-top: 8px; text-align: left;">';
-                                    html += '<img id="paymentProof_preview" src="" style="display:block; max-height: 200px; max-width: 100%; margin-bottom: 8px; border-radius: 4px; border: 1px solid var(--border-glass);" />';
+                                    html += '<img id="paymentProof_preview" src="" crossorigin="anonymous" style="display:block; max-height: 200px; max-width: 100%; margin-bottom: 8px; border-radius: 4px; border: 1px solid var(--border-glass);" />';
                                     html += '<button type="button" id="btn_open_crop" class="fetch-btn" style="padding: 6px 12px; font-size: 12px; background: rgba(59, 130, 246, 0.6);">Crop Image</button>';
                                     html += '</div>';
-                                    html += '<div id="cropper_wrapper" style="display:none; margin-top: 8px; width: 100%; max-height: 400px; overflow: hidden; border-radius: 8px; border: 1px solid var(--border-glass);"><img id="paymentProof_cropper_img" style="display:block; max-width: 100%;" /></div>';
+                                    html += '<div id="cropper_wrapper" style="display:none; margin-top: 8px; width: 100%; max-height: 400px; overflow: hidden; border-radius: 8px; border: 1px solid var(--border-glass);"><img id="paymentProof_cropper_img" crossorigin="anonymous" style="display:block; max-width: 100%;" /></div>';
                                     html += '<div id="cropper_actions" style="display:none; margin-top: 8px; gap: 8px;"><button type="button" id="btn_done_crop" class="create-btn" style="padding: 8px 16px; font-size: 13px;">Done Cropping</button></div>';
                                     html += '<input type="hidden" id="input_paymentProof" />';
                                 } else if (col === 'ticketType') {
@@ -1364,6 +1371,7 @@ const server = http.createServer(async (req, res) => {
                                 wrapper.style.display = 'block';
                                 actions.style.display = 'flex';
                                 
+                                img.crossOrigin = 'anonymous';
                                 img.onload = function() {
                                     if (currentCropper) currentCropper.destroy();
                                     currentCropper = new Cropper(img, {
@@ -1372,7 +1380,7 @@ const server = http.createServer(async (req, res) => {
                                         autoCropArea: 1,
                                     });
                                 };
-                                img.src = proofHidden.value; // load from current valid base64
+                                img.src = proofHidden.value; // load from current valid base64 or URL
                             };
                             
                             btnDoneCrop.onclick = function() {
@@ -1397,37 +1405,7 @@ const server = http.createServer(async (req, res) => {
                             proofSelect.addEventListener('change', (e) => {
                                 if (e.target.value) {
                                     proofFile.style.display = 'none';
-                                    
-                                    // Scramble the Base64 by redrawing it on a canvas
-                                    const img = new Image();
-                                    img.onload = function() {
-                                        const canvas = document.createElement('canvas');
-                                        canvas.width = img.width;
-                                        canvas.height = img.height;
-                                        const ctx = canvas.getContext('2d');
-                                        
-                                        // Fill white background in case it's a transparent PNG being converted to JPEG
-                                        ctx.fillStyle = '#FFFFFF';
-                                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-                                        ctx.drawImage(img, 0, 0);
-                                        
-                                        // Tweak the top-left pixel slightly to guarantee a unique hash/string
-                                        const imgData = ctx.getImageData(0, 0, 1, 1);
-                                        imgData.data[0] = (imgData.data[0] === 255) ? 254 : imgData.data[0] + 1;
-                                        ctx.putImageData(imgData, 0, 0);
-                                        
-                                        // Export as JPEG to strip old metadata and get a completely fresh string
-                                        let newBase64 = canvas.toDataURL('image/jpeg', 0.95);
-                                        
-                                        // Fallback if somehow it's still too large
-                                        if (newBase64.length > 1000000) {
-                                            newBase64 = canvas.toDataURL('image/jpeg', 0.85);
-                                        }
-                                        
-                                        updateProofPreview(newBase64);
-                                    };
-                                    img.src = e.target.value;
-                                    
+                                    updateProofPreview(e.target.value);
                                 } else {
                                     proofFile.style.display = 'block';
                                     updateProofPreview('');
@@ -1600,34 +1578,87 @@ const server = http.createServer(async (req, res) => {
             const colName = url.searchParams.get('collection');
             if (!colName) throw new Error('Collection name required');
             
-            let query = supabase.from(colName).select('*');
-            if (colName === 'registrations') {
-                query = supabase.from(colName).select('*, attendees(*)');
-            }
+            const cacheFile = `./local_db_cache_${colName}.json`;
             
-            const { data, error } = await query;
-            if (error) throw error;
-            
-            const mappedData = data.map(item => {
-                let mappedItem = { _docId: item.id, ...item };
-                if (colName === 'registrations') {
-                    mappedItem.ticketType = item.ticket_type;
-                    mappedItem.paymentProof = item.payment_proof_url;
-                    mappedItem.adminComment = item.admin_comment;
-                    mappedItem.createdAt = item.created_at;
-                    if (item.attendees) {
-                        mappedItem.attendees = item.attendees.map(a => ({
-                            ...a,
-                            studentId: a.student_id,
-                            emergencyContact: a.emergency_contact
-                        }));
+            if (!liveDataCache[colName]) {
+                if (fs.existsSync(cacheFile)) {
+                    try {
+                        liveDataCache[colName] = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+                    } catch (e) {
+                        console.error('Error reading cache file', e);
                     }
                 }
-                return mappedItem;
-            });
+            }
+            
+            const fetchAndUpdateCache = async () => {
+                isSyncing[colName] = true;
+                try {
+                    let query = supabase.from(colName).select('*');
+                    if (colName === 'registrations') {
+                        query = supabase.from(colName).select('*, attendees(*)');
+                    }
+                    
+                    const { data, error } = await query;
+                    if (error) throw error;
+                    
+                    const mappedData = data.map(item => {
+                        let mappedItem = { _docId: item.id, ...item };
+                        if (colName === 'registrations') {
+                            mappedItem.ticketType = item.ticket_type;
+                            mappedItem.paymentProof = item.payment_proof_url;
+                            mappedItem.adminComment = item.admin_comment;
+                            mappedItem.createdAt = item.created_at;
+                            if (item.attendees) {
+                                mappedItem.attendees = item.attendees.map(a => ({
+                                    ...a,
+                                    studentId: a.student_id,
+                                    emergencyContact: a.emergency_contact
+                                }));
+                            }
+                        }
+                        return mappedItem;
+                    });
+                    
+                    liveDataCache[colName] = mappedData;
+                    fs.writeFile(cacheFile, JSON.stringify(mappedData), (err) => {
+                        if (err) console.error('Failed to write cache file', err);
+                    });
+                } catch(e) {
+                    console.error('Background sync failed:', e);
+                } finally {
+                    isSyncing[colName] = false;
+                }
+            };
+            
+            if (!activeListeners[colName]) {
+                activeListeners[colName] = true;
+                
+                await fetchAndUpdateCache();
+                
+                supabase.channel(`public:${colName}`)
+                    .on('postgres_changes', { event: '*', schema: 'public', table: colName }, () => {
+                        fetchAndUpdateCache();
+                    })
+                    .subscribe();
+                    
+                if (colName === 'registrations') {
+                    supabase.channel('public:attendees')
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'attendees' }, () => {
+                            fetchAndUpdateCache();
+                        })
+                        .subscribe();
+                }
+            } else if (!liveDataCache[colName]) {
+                await fetchAndUpdateCache();
+            } else {
+                fetchAndUpdateCache();
+            }
             
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(mappedData));
+            res.end(JSON.stringify({
+                data: liveDataCache[colName] || [],
+                isSynced: !isSyncing[colName]
+            }));
         } catch (error) {
             res.writeHead(500);
             res.end(JSON.stringify({ error: error.message }));
@@ -1676,6 +1707,8 @@ const server = http.createServer(async (req, res) => {
                         delete a.studentId;
                         delete a.emergencyContact;
                         delete a._docId;
+                        delete a.id;
+                        delete a.created_at;
                     });
                     const { error: attendeeError } = await supabase.from('attendees').insert(attendeesPayload);
                     if (attendeeError) throw attendeeError;
@@ -1724,7 +1757,8 @@ const server = http.createServer(async (req, res) => {
                 if (error) throw error;
                 
                 if (colName === 'registrations' && attendees && attendees.length > 0) {
-                    await supabase.from('attendees').delete().eq('registration_id', id);
+                    const { error: delError } = await supabase.from('attendees').delete().eq('registration_id', id);
+                    if (delError) throw delError;
                     
                     const attendeesPayload = attendees.map(a => ({
                         ...a,
@@ -1736,6 +1770,8 @@ const server = http.createServer(async (req, res) => {
                         delete a.studentId;
                         delete a.emergencyContact;
                         delete a._docId;
+                        delete a.id;
+                        delete a.created_at;
                     });
                     const { error: attendeeError } = await supabase.from('attendees').insert(attendeesPayload);
                     if (attendeeError) throw attendeeError;
